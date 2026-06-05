@@ -1,0 +1,131 @@
+export const t = {
+  bn: {
+    // Auth
+    login:          'লগইন',
+    logout:         'লগআউট',
+    phone:          'ফোন নম্বর',
+    otp:            'OTP কোড',
+    sendOtp:        'OTP পাঠাও',
+    verifyOtp:      'OTP যাচাই করো',
+    orLoginWith:    'অথবা লগইন করো',
+    google:         'Google দিয়ে লগইন',
+    loginTitle:     'স্মার্ট ERP-তে স্বাগতম',
+    loginSubtitle:  'আপনার ব্যবসা স্মার্টভাবে পরিচালনা করুন',
+
+    // Navigation
+    dashboard:    'ড্যাশবোর্ড',
+    inventory:    'ইনভেন্টরি',
+    sales:        'বিক্রয়',
+    purchase:     'ক্রয়',
+    customers:    'কাস্টমার',
+    suppliers:    'সাপ্লায়ার',
+    accounting:   'হিসাব',
+    reports:      'রিপোর্ট',
+    employees:    'কর্মচারী',
+    settings:     'সেটিংস',
+
+    // Common
+    save:       'সেভ করো',
+    cancel:     'বাতিল',
+    delete:     'মুছো',
+    edit:       'সম্পাদনা',
+    add:        'যোগ করো',
+    search:     'খোঁজো',
+    loading:    'লোড হচ্ছে...',
+    success:    'সফল হয়েছে',
+    error:      'সমস্যা হয়েছে',
+    confirm:    'নিশ্চিত করো',
+    back:       'পেছনে',
+    next:       'পরবর্তী',
+    today:      'আজ',
+    total:      'মোট',
+    amount:     'পরিমাণ',
+    date:       'তারিখ',
+    name:       'নাম',
+    phone_num:  'ফোন',
+    address:    'ঠিকানা',
+    note:       'নোট',
+
+    // Business
+    businessName:     'ব্যবসার নাম',
+    businessCategory: 'ব্যবসার ধরন',
+    myBusinesses:     'আমার ব্যবসা',
+    addBusiness:      'নতুন ব্যবসা যোগ করো',
+    selectBusiness:   'ব্যবসা বেছে নাও',
+
+    // Categories
+    retail:       'খুচরা ব্যবসা',
+    wholesale:    'পাইকারি ব্যবসা',
+    restaurant:   'রেস্তোরাঁ',
+    pharmacy:     'ফার্মেসি',
+    construction: 'নির্মাণ',
+    fishfarm:     'মৎস্য খামার',
+    other:        'অন্যান্য',
+  },
+
+  en: {
+    // Auth
+    login:          'Login',
+    logout:         'Logout',
+    phone:          'Phone Number',
+    otp:            'OTP Code',
+    sendOtp:        'Send OTP',
+    verifyOtp:      'Verify OTP',
+    orLoginWith:    'Or login with',
+    google:         'Login with Google',
+    loginTitle:     'Welcome to Smart ERP',
+    loginSubtitle:  'Manage your business smartly',
+
+    // Navigation
+    dashboard:    'Dashboard',
+    inventory:    'Inventory',
+    sales:        'Sales',
+    purchase:     'Purchase',
+    customers:    'Customers',
+    suppliers:    'Suppliers',
+    accounting:   'Accounting',
+    reports:      'Reports',
+    employees:    'Employees',
+    settings:     'Settings',
+
+    // Common
+    save:       'Save',
+    cancel:     'Cancel',
+    delete:     'Delete',
+    edit:       'Edit',
+    add:        'Add',
+    search:     'Search',
+    loading:    'Loading...',
+    success:    'Success',
+    error:      'Error',
+    confirm:    'Confirm',
+    back:       'Back',
+    next:       'Next',
+    today:      'Today',
+    total:      'Total',
+    amount:     'Amount',
+    date:       'Date',
+    name:       'Name',
+    phone_num:  'Phone',
+    address:    'Address',
+    note:       'Note',
+
+    // Business
+    businessName:     'Business Name',
+    businessCategory: 'Business Type',
+    myBusinesses:     'My Businesses',
+    addBusiness:      'Add New Business',
+    selectBusiness:   'Select Business',
+
+    // Categories
+    retail:       'Retail',
+    wholesale:    'Wholesale',
+    restaurant:   'Restaurant',
+    pharmacy:     'Pharmacy',
+    construction: 'Construction',
+    fishfarm:     'Fish Farm',
+    other:        'Other',
+  },
+}
+
+export type TranslationKey = keyof typeof t.bn
