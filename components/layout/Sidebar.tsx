@@ -6,6 +6,7 @@ import {
   LayoutDashboard, Package, ShoppingCart, TruckIcon,
   Users, Building2, BookOpen, BarChart3,
   UserCog, Settings, X, ChevronRight,
+  Sparkles, GitBranch, Shield,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAppStore } from '@/store/useAppStore'
@@ -21,12 +22,18 @@ const navItems = [
   { href: '/accounting', icon: BookOpen,         key: 'accounting' },
   { href: '/reports',    icon: BarChart3,        key: 'reports'    },
   { href: '/employees',  icon: UserCog,          key: 'employees'  },
-  { href: '/settings',   icon: Settings,         key: 'settings'   },
+]
+
+const extraItems = [
+  { href: '/ai',       icon: Sparkles,   label_bn: 'AI সহকারী', label_en: 'AI Assistant', gradient: true },
+  { href: '/branches', icon: GitBranch,  label_bn: 'শাখা',       label_en: 'Branches'                      },
+  { href: '/audit',    icon: Shield,     label_bn: 'অডিট লগ',   label_en: 'Audit Log'                     },
+  { href: '/settings', icon: Settings,   label_bn: 'সেটিংস',    label_en: 'Settings'                      },
 ]
 
 export function Sidebar() {
   const pathname       = usePathname()
-  const { tr }         = useTranslation()
+  const { tr, language } = useTranslation()
   const { sidebarOpen, setSidebarOpen, activeBusiness } = useAppStore()
 
   return (
@@ -89,6 +96,40 @@ export function Sidebar() {
               >
                 <Icon size={18} className="shrink-0" />
                 {sidebarOpen && <span>{tr[key as keyof typeof tr]}</span>}
+                {sidebarOpen && active && <ChevronRight size={14} className="ml-auto" />}
+              </Link>
+            )
+          })}
+
+          {/* Divider */}
+          {sidebarOpen && (
+            <div className="pt-2 pb-1">
+              <p className="px-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">আরও</p>
+            </div>
+          )}
+          {!sidebarOpen && <div className="my-2 border-t border-gray-100 dark:border-gray-800" />}
+
+          {/* Extra items */}
+          {extraItems.map(({ href, icon: Icon, label_bn, label_en, gradient }) => {
+            const active = pathname.startsWith(href)
+            return (
+              <Link
+                key={href}
+                href={href}
+                className={cn(
+                  'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150',
+                  active
+                    ? gradient
+                      ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white'
+                      : 'bg-blue-600 text-white'
+                    : gradient
+                    ? 'text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950'
+                    : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white',
+                )}
+                onClick={() => { if (window.innerWidth < 1024) setSidebarOpen(false) }}
+              >
+                <Icon size={18} className="shrink-0" />
+                {sidebarOpen && <span>{language === 'bn' ? label_bn : label_en}</span>}
                 {sidebarOpen && active && <ChevronRight size={14} className="ml-auto" />}
               </Link>
             )
