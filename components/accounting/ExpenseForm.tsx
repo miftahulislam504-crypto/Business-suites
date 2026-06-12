@@ -92,7 +92,7 @@ export function ExpenseForm({ onClose, onSaved }: Props) {
             <div className="flex flex-wrap gap-2 mb-2">
               {categories.map(cat => (
                 <button key={cat}
-                  onClick={() => set('category', cat) || set('isCustomCat', false)}
+                  onClick={() => { set('category', cat); set('isCustomCat', false) }}
                   className={cn(
                     'px-3 py-1.5 rounded-full text-xs font-medium border transition-all',
                     !form.isCustomCat && form.category === cat
