@@ -1,19 +1,16 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import {
   ResponsiveContainer, BarChart, Bar,
   XAxis, YAxis, CartesianGrid, Tooltip,
 } from 'recharts'
 import { useAppStore } from '@/store/useAppStore'
+import { getSales, getExpenses } from '@/lib/firestore'
+import { Loader2 } from 'lucide-react'
 
-const data = [
-  { month: 'জান',  inflow: 85000,  outflow: 62000 },
-  { month: 'ফেব',  inflow: 92000,  outflow: 71000 },
-  { month: 'মার্চ', inflow: 78000,  outflow: 58000 },
-  { month: 'এপ্রি', inflow: 105000, outflow: 79000 },
-  { month: 'মে',   inflow: 118000, outflow: 88000 },
-  { month: 'জুন',  inflow: 98000,  outflow: 72000 },
-]
+const MONTHS_BN = ['জান','ফেব','মার্চ','এপ্রি','মে','জুন','জুলাই','আগ','সেপ','অক্টো','নভে','ডিসে']
+const MONTHS_EN = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
 
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (!active || !payload?.length) return null
@@ -27,7 +24,47 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 }
 
 export function CashFlowChart() {
-  const { language } = useAppStore()
+  const { language, activeBusiness } = useAppStore()
+  const [data, setData]       = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    if (!activeBusiness) { setLoading(false); return }
+
+    Promise.all([
+      getSales(activeBusiness.id, 500),
+      getExpenses(activeBusiness.id, 500),
+    ]).then(([sales, expenses]) => {
+      // Build last 6 months
+      const now = new Date()
+      const map: Record<string, { inflow: number; outflow: number; label: string }> = {}
+      for (let i = 5; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+        const key = `${d.getFullYear()}-${d.getMonth()}`
+        map[key] = {
+          inflow:  0,
+          outflow: 0,
+          label:   language === 'bn' ? MONTHS_BN[d.getMonth()] : MONTHS_EN[d.getMonth()],
+        }
+      }
+
+      sales.forEach(s => {
+        const d = (s.createdAt as any)?.toDate ? (s.createdAt as any).toDate() : new Date(s.createdAt)
+        const key = `${d.getFullYear()}-${d.getMonth()}`
+        if (map[key]) map[key].inflow += s.grandTotal ?? 0
+      })
+
+      expenses.forEach(e => {
+        const d = (e.createdAt as any)?.toDate ? (e.createdAt as any).toDate() : new Date(e.createdAt)
+        const key = `${d.getFullYear()}-${d.getMonth()}`
+        if (map[key]) map[key].outflow += e.amount ?? 0
+      })
+
+      setData(Object.values(map).map(v => ({
+        month: v.label, inflow: v.inflow, outflow: v.outflow,
+      })))
+    }).finally(() => setLoading(false))
+  }, [activeBusiness, language])
 
   return (
     <div className="card">
@@ -39,16 +76,23 @@ export function CashFlowChart() {
           {language === 'bn' ? 'গত ৬ মাস' : 'Last 6 Months'}
         </span>
       </div>
-      <ResponsiveContainer width="100%" height={180}>
-        <BarChart data={data} margin={{ top: 5, right: 5, left: -20, bottom: 0 }} barSize={14}>
-          <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-          <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-          <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
-          <Tooltip content={<CustomTooltip />} />
-          <Bar dataKey="inflow"  fill="#3b82f6" radius={[4, 4, 0, 0]} />
-          <Bar dataKey="outflow" fill="#f87171" radius={[4, 4, 0, 0]} />
-        </BarChart>
-      </ResponsiveContainer>
+
+      {loading ? (
+        <div className="flex justify-center py-8">
+          <Loader2 size={20} className="animate-spin text-gray-400" />
+        </div>
+      ) : (
+        <ResponsiveContainer width="100%" height={180}>
+          <BarChart data={data} margin={{ top: 5, right: 5, left: -20, bottom: 0 }} barSize={14}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+            <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+            <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+            <Tooltip content={<CustomTooltip />} />
+            <Bar dataKey="inflow"  fill="#3b82f6" radius={[4,4,0,0]} />
+            <Bar dataKey="outflow" fill="#f87171" radius={[4,4,0,0]} />
+          </BarChart>
+        </ResponsiveContainer>
+      )}
     </div>
   )
 }

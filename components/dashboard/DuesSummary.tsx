@@ -1,22 +1,43 @@
 'use client'
 
-import { ArrowRight, TrendingDown, TrendingUp } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { ArrowRight, TrendingDown, TrendingUp, Loader2 } from 'lucide-react'
 import Link from 'next/link'
 import { useAppStore } from '@/store/useAppStore'
-
-// Placeholder — Phase 7 (Customer & Due) এর পর real data
-const topDues = [
-  { id: '1', name: 'করিম ট্রেডার্স',   amount: 15000, days: 12, type: 'receivable' },
-  { id: '2', name: 'রহিম এন্টারপ্রাইজ', amount: 8500,  days: 5,  type: 'receivable' },
-  { id: '3', name: 'ABC সাপ্লায়ার',    amount: 22000, days: 20, type: 'payable'    },
-  { id: '4', name: 'XYZ ডিলার',         amount: 11000, days: 8,  type: 'payable'    },
-]
+import { getCustomers, getSuppliers } from '@/lib/firestore'
 
 export function DuesSummary() {
-  const { language } = useAppStore()
+  const { language, activeBusiness } = useAppStore()
+  const [receivable, setReceivable] = useState(0)
+  const [payable, setPayable]       = useState(0)
+  const [topList, setTopList]       = useState<any[]>([])
+  const [loading, setLoading]       = useState(true)
 
-  const totalReceivable = topDues.filter(d => d.type === 'receivable').reduce((s, d) => s + d.amount, 0)
-  const totalPayable    = topDues.filter(d => d.type === 'payable').reduce((s, d) => s + d.amount, 0)
+  useEffect(() => {
+    if (!activeBusiness) { setLoading(false); return }
+
+    Promise.all([
+      getCustomers(activeBusiness.id),
+      getSuppliers(activeBusiness.id),
+    ]).then(([customers, suppliers]) => {
+      const totalRec = customers.reduce((s, c) => s + (c.totalDue ?? 0), 0)
+      const totalPay = suppliers.reduce((s, s2) => s + (s2.totalDue ?? 0), 0)
+      setReceivable(totalRec)
+      setPayable(totalPay)
+
+      const custDues = customers
+        .filter(c => (c.totalDue ?? 0) > 0)
+        .map(c => ({ id: c.id, name: c.name, amount: c.totalDue ?? 0, type: 'receivable' }))
+      const suppDues = suppliers
+        .filter(s => (s.totalDue ?? 0) > 0)
+        .map(s => ({ id: s.id, name: s.name, amount: s.totalDue ?? 0, type: 'payable' }))
+
+      const merged = [...custDues, ...suppDues]
+        .sort((a, b) => b.amount - a.amount)
+        .slice(0, 4)
+      setTopList(merged)
+    }).finally(() => setLoading(false))
+  }, [activeBusiness])
 
   return (
     <div className="card">
@@ -29,7 +50,6 @@ export function DuesSummary() {
         </Link>
       </div>
 
-      {/* Summary boxes */}
       <div className="grid grid-cols-2 gap-3 mb-4">
         <div className="p-3 rounded-xl bg-green-50 dark:bg-green-950 border border-green-100 dark:border-green-900">
           <div className="flex items-center gap-1.5 mb-1">
@@ -39,7 +59,7 @@ export function DuesSummary() {
             </span>
           </div>
           <p className="text-lg font-bold text-green-700 dark:text-green-400">
-            ৳{totalReceivable.toLocaleString()}
+            ৳{receivable.toLocaleString()}
           </p>
         </div>
         <div className="p-3 rounded-xl bg-red-50 dark:bg-red-950 border border-red-100 dark:border-red-900">
@@ -50,36 +70,42 @@ export function DuesSummary() {
             </span>
           </div>
           <p className="text-lg font-bold text-red-600 dark:text-red-400">
-            ৳{totalPayable.toLocaleString()}
+            ৳{payable.toLocaleString()}
           </p>
         </div>
       </div>
 
-      {/* Top dues list */}
-      <div className="space-y-2">
-        {topDues.map((due) => (
-          <div key={due.id} className="flex items-center justify-between py-1.5 border-b border-gray-50 dark:border-gray-800 last:border-0">
-            <div>
+      {loading ? (
+        <div className="flex justify-center py-4">
+          <Loader2 size={18} className="animate-spin text-gray-400" />
+        </div>
+      ) : topList.length === 0 ? (
+        <p className="text-sm text-gray-400 text-center py-4">
+          {language === 'bn' ? 'কোনো বকেয়া নেই' : 'No dues'}
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {topList.map((due) => (
+            <div key={due.id} className="flex items-center justify-between py-1.5 border-b border-gray-50 dark:border-gray-800 last:border-0">
               <p className="text-sm font-medium text-gray-800 dark:text-gray-200">{due.name}</p>
-              <p className="text-xs text-gray-400">{due.days} দিন আগে</p>
+              <div className="text-right">
+                <p className={`text-sm font-bold ${due.type === 'receivable' ? 'text-green-600' : 'text-red-500'}`}>
+                  ৳{due.amount.toLocaleString()}
+                </p>
+                <span className={`text-xs px-1.5 py-0.5 rounded-full ${
+                  due.type === 'receivable'
+                    ? 'bg-green-50 dark:bg-green-950 text-green-600'
+                    : 'bg-red-50 dark:bg-red-950 text-red-500'
+                }`}>
+                  {due.type === 'receivable'
+                    ? (language === 'bn' ? 'পাবো' : 'Due In')
+                    : (language === 'bn' ? 'দেবো' : 'Due Out')}
+                </span>
+              </div>
             </div>
-            <div className="text-right">
-              <p className={`text-sm font-bold ${due.type === 'receivable' ? 'text-green-600' : 'text-red-500'}`}>
-                ৳{due.amount.toLocaleString()}
-              </p>
-              <span className={`text-xs px-1.5 py-0.5 rounded-full ${
-                due.type === 'receivable'
-                  ? 'bg-green-50 dark:bg-green-950 text-green-600'
-                  : 'bg-red-50 dark:bg-red-950 text-red-500'
-              }`}>
-                {due.type === 'receivable'
-                  ? (language === 'bn' ? 'পাবো' : 'Due In')
-                  : (language === 'bn' ? 'দেবো' : 'Due Out')}
-              </span>
-            </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

@@ -1,16 +1,10 @@
 'use client'
 
-import { AlertTriangle, Package, ArrowRight } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { AlertTriangle, Package, ArrowRight, Loader2 } from 'lucide-react'
 import Link from 'next/link'
 import { useAppStore } from '@/store/useAppStore'
-
-// Placeholder — Phase 4 (Inventory) এর পর real data আসবে
-const lowStockItems = [
-  { id: '1', name: 'সিমেন্ট (৫০ কেজি)',  stock: 3,  unit: 'বস্তা', reorder: 20 },
-  { id: '2', name: 'রড ১২মিমি',           stock: 8,  unit: 'পিস',   reorder: 50 },
-  { id: '3', name: 'টাইলস (ফ্লোর)',       stock: 12, unit: 'পিস',   reorder: 100},
-  { id: '4', name: 'পেইন্ট (ব্লু)',       stock: 2,  unit: 'গ্যালন', reorder: 10 },
-]
+import { getLowStockProducts } from '@/lib/firestore'
 
 function getStockColor(stock: number, reorder: number) {
   const ratio = stock / reorder
@@ -20,7 +14,16 @@ function getStockColor(stock: number, reorder: number) {
 }
 
 export function LowStockAlert() {
-  const { language } = useAppStore()
+  const { language, activeBusiness } = useAppStore()
+  const [items, setItems]     = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    if (!activeBusiness) { setLoading(false); return }
+    getLowStockProducts(activeBusiness.id)
+      .then(data => setItems(data.slice(0, 5)))
+      .finally(() => setLoading(false))
+  }, [activeBusiness])
 
   return (
     <div className="card">
@@ -33,38 +36,39 @@ export function LowStockAlert() {
             {language === 'bn' ? 'লো স্টক সতর্কতা' : 'Low Stock Alert'}
           </h2>
         </div>
-        <Link
-          href="/inventory"
-          className="text-xs text-blue-600 hover:underline flex items-center gap-0.5"
-        >
-          {language === 'bn' ? 'সব দেখো' : 'View All'}
-          <ArrowRight size={11} />
+        <Link href="/inventory" className="text-xs text-blue-600 hover:underline flex items-center gap-0.5">
+          {language === 'bn' ? 'সব দেখো' : 'View All'} <ArrowRight size={11} />
         </Link>
       </div>
 
-      <div className="space-y-2">
-        {lowStockItems.map((item) => (
-          <div
-            key={item.id}
-            className="flex items-center gap-3 p-2.5 rounded-lg bg-gray-50 dark:bg-gray-800"
-          >
-            <div className="p-1.5 bg-white dark:bg-gray-700 rounded-lg">
-              <Package size={14} className="text-gray-500" />
+      {loading ? (
+        <div className="flex justify-center py-6">
+          <Loader2 size={18} className="animate-spin text-gray-400" />
+        </div>
+      ) : items.length === 0 ? (
+        <p className="text-sm text-gray-400 text-center py-6">
+          {language === 'bn' ? 'সব স্টক ঠিক আছে ✓' : 'All stock levels OK ✓'}
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {items.map((item) => (
+            <div key={item.id} className="flex items-center gap-3 p-2.5 rounded-lg bg-gray-50 dark:bg-gray-800">
+              <div className="p-1.5 bg-white dark:bg-gray-700 rounded-lg">
+                <Package size={14} className="text-gray-500" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">{item.name}</p>
+                <p className="text-xs text-gray-400">
+                  {language === 'bn' ? 'রিঅর্ডার লেভেল' : 'Reorder'}: {item.reorderLevel} {item.unit}
+                </p>
+              </div>
+              <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${getStockColor(item.stock, item.reorderLevel)}`}>
+                {item.stock} {item.unit}
+              </span>
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">
-                {item.name}
-              </p>
-              <p className="text-xs text-gray-400">
-                রিঅর্ডার লেভেল: {item.reorder} {item.unit}
-              </p>
-            </div>
-            <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${getStockColor(item.stock, item.reorder)}`}>
-              {item.stock} {item.unit}
-            </span>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
