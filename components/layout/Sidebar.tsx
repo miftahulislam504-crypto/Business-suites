@@ -58,7 +58,7 @@ export function Sidebar() {
         {/* Logo */}
         <div className="flex items-center justify-between h-16 px-4 border-b border-gray-100 dark:border-gray-800">
           {sidebarOpen && (
-            <span className="font-bold text-lg text-blue-600">Smart ERP</span>
+            <span className="font-bold text-lg text-blue-600">Business Suites</span>
           )}
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}

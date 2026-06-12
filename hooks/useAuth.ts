@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { onAuthStateChanged } from 'firebase/auth'
 import { auth } from '@/lib/firebase'
 import { useAppStore } from '@/store/useAppStore'
@@ -8,6 +8,7 @@ import type { User } from '@/lib/types'
 
 export function useAuth() {
   const { user, setUser, activeBusiness } = useAppStore()
+  const [authLoading, setAuthLoading] = useState(true)
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
@@ -24,10 +25,11 @@ export function useAuth() {
       } else {
         setUser(null)
       }
+      setAuthLoading(false)
     })
 
     return () => unsubscribe()
   }, [setUser])
 
-  return { user, activeBusiness }
+  return { user, activeBusiness, authLoading }
 }

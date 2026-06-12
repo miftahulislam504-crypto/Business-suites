@@ -75,7 +75,7 @@ export default function SetupPage() {
           <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
             <span className="text-white font-bold text-sm">E</span>
           </div>
-          <span className="font-bold text-blue-600">Smart ERP</span>
+          <span className="font-bold text-blue-600">Business Suites</span>
         </div>
         <div className="flex items-center gap-2">
           <span className="text-sm text-gray-500 hidden sm:block">

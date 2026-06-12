@@ -44,7 +44,7 @@ export function InvoiceModal({ sale, onClose, onNewSale }: Props) {
   }
 
   function handleWhatsApp() {
-    const text = `*${activeBusiness?.name ?? 'Smart ERP'}*\nইনভয়েস: ${sale.invoiceNo}\nকাস্টমার: ${sale.customerName}\n${sale.items.map(i => `• ${i.productName} × ${i.quantity} = ৳${i.total}`).join('\n')}\n\n*মোট: ৳${sale.grandTotal.toLocaleString()}*\n*পরিশোধ: ৳${sale.paidAmount.toLocaleString()}*\n${sale.dueAmount > 0 ? `*বাকি: ৳${sale.dueAmount.toLocaleString()}*` : '✓ সম্পূর্ণ পরিশোধ'}`
+    const text = `*${activeBusiness?.name ?? 'Business Suites'}*\nইনভয়েস: ${sale.invoiceNo}\nকাস্টমার: ${sale.customerName}\n${sale.items.map(i => `• ${i.productName} × ${i.quantity} = ৳${i.total}`).join('\n')}\n\n*মোট: ৳${sale.grandTotal.toLocaleString()}*\n*পরিশোধ: ৳${sale.paidAmount.toLocaleString()}*\n${sale.dueAmount > 0 ? `*বাকি: ৳${sale.dueAmount.toLocaleString()}*` : '✓ সম্পূর্ণ পরিশোধ'}`
     window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank')
   }
 

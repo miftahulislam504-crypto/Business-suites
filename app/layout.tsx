@@ -5,8 +5,8 @@ import { ThemeProvider } from '@/components/layout/ThemeProvider'
 import { Toaster } from 'react-hot-toast'
 
 export const metadata: Metadata = {
-  title: 'Smart ERP BD',
-  description: 'বাংলাদেশের সবচেয়ে স্মার্ট ব্যবসা ম্যানেজমেন্ট সফটওয়্যার',
+  title: 'Business Suites',
+  description: 'আপনার ব্যবসা পরিচালনার সহজ সমাধান',
   manifest: '/manifest.json',
 }
 

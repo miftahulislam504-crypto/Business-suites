@@ -9,7 +9,7 @@ export const t = {
     verifyOtp:      'OTP যাচাই করো',
     orLoginWith:    'অথবা লগইন করো',
     google:         'Google দিয়ে লগইন',
-    loginTitle:     'স্মার্ট ERP-তে স্বাগতম',
+    loginTitle:     'Business Suites-এ স্বাগতম',
     loginSubtitle:  'আপনার ব্যবসা স্মার্টভাবে পরিচালনা করুন',
 
     // Navigation
@@ -73,7 +73,7 @@ export const t = {
     verifyOtp:      'Verify OTP',
     orLoginWith:    'Or login with',
     google:         'Login with Google',
-    loginTitle:     'Welcome to Smart ERP',
+    loginTitle:     'Welcome to Business Suites',
     loginSubtitle:  'Manage your business smartly',
 
     // Navigation

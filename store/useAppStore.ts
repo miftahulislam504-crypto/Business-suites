@@ -50,7 +50,7 @@ export const useAppStore = create<AppState>()(
       setSidebarOpen: (open) => set({ sidebarOpen: open }),
     }),
     {
-      name: 'erp-app-store',
+      name: 'business-suites-store',
       partialize: (state) => ({
         theme:    state.theme,
         language: state.language,

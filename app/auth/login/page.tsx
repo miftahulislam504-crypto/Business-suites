@@ -94,7 +94,7 @@ export default function LoginPage() {
             <span className="text-white text-2xl font-bold">E</span>
           </div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-            {language === 'bn' ? 'স্মার্ট ERP-তে স্বাগতম' : 'Welcome to Smart ERP'}
+            {language === 'bn' ? 'Business Suites-এ স্বাগতম' : 'Welcome to Business Suites'}
           </h1>
           <p className="text-gray-500 dark:text-gray-400 text-sm mt-1">
             {language === 'bn'
