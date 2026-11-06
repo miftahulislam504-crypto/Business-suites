@@ -7,6 +7,7 @@ import { ProductForm } from '@/components/inventory/ProductForm'
 import { StockAdjustModal } from '@/components/inventory/StockAdjustModal'
 import { getProducts, deleteProduct } from '@/lib/firestore'
 import { useAppStore } from '@/store/useAppStore'
+import { can, getRole } from '@/lib/permissions'
 import {
   Plus, Search, Filter, Package,
   AlertTriangle, TrendingDown, BarChart2,
@@ -19,7 +20,8 @@ import type { Product } from '@/lib/types'
 type FilterType = 'all' | 'low' | 'out'
 
 export default function InventoryPage() {
-  const { activeBusiness, language } = useAppStore()
+  const { activeBusiness, language, user } = useAppStore()
+  const canManage = can(getRole(activeBusiness, user?.uid), 'product.manage')
 
   const [products,       setProducts]       = useState<Product[]>([])
   const [loading,        setLoading]        = useState(true)
@@ -89,13 +91,15 @@ export default function InventoryPage() {
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">ইনভেন্টরি</h1>
           <p className="text-sm text-gray-400 mt-0.5">মোট {stats.total}টি পণ্য</p>
         </div>
-        <button
-          onClick={() => { setEditProduct(null); setShowForm(true) }}
-          className="btn-primary flex items-center gap-2 px-4 py-2.5"
-        >
-          <Plus size={17} />
-          <span className="hidden sm:inline">নতুন পণ্য</span>
-        </button>
+        {canManage && (
+          <button
+            onClick={() => { setEditProduct(null); setShowForm(true) }}
+            className="btn-primary flex items-center gap-2 px-4 py-2.5"
+          >
+            <Plus size={17} />
+            <span className="hidden sm:inline">নতুন পণ্য</span>
+          </button>
+        )}
       </div>
 
       {/* Stats row */}
@@ -163,7 +167,7 @@ export default function InventoryPage() {
           <p className="font-medium">
             {search || filter !== 'all' ? 'কোনো পণ্য পাওয়া যায়নি' : 'এখনো কোনো পণ্য যোগ হয়নি'}
           </p>
-          {!search && filter === 'all' && (
+          {canManage && !search && filter === 'all' && (
             <button
               onClick={() => { setEditProduct(null); setShowForm(true) }}
               className="mt-4 btn-primary px-5 py-2.5"
@@ -181,6 +185,7 @@ export default function InventoryPage() {
               onEdit={(p) => { setEditProduct(p); setShowForm(true) }}
               onDelete={(p) => setConfirmDelete(p)}
               onStockAdjust={(p) => setAdjustProduct(p)}
+              canManage={canManage}
             />
           ))}
         </div>

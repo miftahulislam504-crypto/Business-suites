@@ -4,6 +4,8 @@ import { useState } from 'react'
 import { Sparkles, Loader2, TrendingDown, TrendingUp, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react'
 import { buildBusinessContext, buildSystemPrompt } from '@/lib/ai-context'
 import { useAppStore } from '@/store/useAppStore'
+import { askAI } from '@/lib/ai-client'
+import { userMessage } from '@/lib/firestore'
 import { cn } from '@/lib/utils'
 
 const analysisQuestions = [
@@ -37,27 +39,21 @@ export function AIReportAnalysis() {
       const context = await buildBusinessContext(activeBusiness)
       const system  = buildSystemPrompt(context)
 
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model:      'claude-sonnet-4-20250514',
-          max_tokens: 1000,
-          system,
-          messages: [{ role: 'user', content: prompt }],
-        }),
+      const text = await askAI({
+        businessId: activeBusiness.id,
+        system,
+        messages:   [{ role: 'user', content: prompt }],
       })
-      const data = await response.json()
       setResult({
         question,
-        answer: data.content?.[0]?.text ?? 'বিশ্লেষণ পাওয়া যায়নি।',
+        answer: text || 'বিশ্লেষণ পাওয়া যায়নি।',
         time:   new Date(),
       })
       setExpanded(true)
-    } catch {
+    } catch (e) {
       setResult({
         question,
-        answer: 'সংযোগ সমস্যা। আবার চেষ্টা করো।',
+        answer: userMessage(e, 'সংযোগ সমস্যা। আবার চেষ্টা করো।'),
         time:   new Date(),
       })
     } finally {

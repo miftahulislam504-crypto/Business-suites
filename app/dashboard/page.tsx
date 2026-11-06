@@ -10,7 +10,9 @@ import { RecentTransactions } from '@/components/dashboard/RecentTransactions'
 import { QuickActions } from '@/components/dashboard/QuickActions'
 import { DuesSummary } from '@/components/dashboard/DuesSummary'
 import { useAppStore } from '@/store/useAppStore'
-import { getTodaySales, getExpenses, getCustomers, getLowStockProducts, getAccounts } from '@/lib/firestore'
+import { getTodaySales, getCustomers, getLowStockProducts, getAccounts } from '@/lib/firestore'
+import { saleNet, saleCost } from '@/lib/finance'
+import { canAccess, getRole } from '@/lib/permissions'
 import { ShoppingCart, TrendingUp, AlertCircle, Package, Wallet, Users } from 'lucide-react'
 
 export default function DashboardPage() {
@@ -30,11 +32,10 @@ export default function DashboardPage() {
 
     // Today's sales & profit
     getTodaySales(bId).then(sales => {
-      const revenue = sales.reduce((s, x) => s + (x.grandTotal ?? 0), 0)
-      const cost    = sales.reduce((s, x) => s + (x.items?.reduce((a: number, i: any) => a + (i.purchasePrice ?? 0) * i.qty, 0) ?? 0), 0)
-      setTodaySales(revenue)
-      setTodayProfit(revenue - cost)
-    })
+      // বিক্রয় = ইনভয়েসের মোট; লাভ = ভ্যাট বাদে বিক্রয় − পণ্যের ক্রয়মূল্য
+      setTodaySales(sales.reduce((s, x) => s + (x.grandTotal ?? 0), 0))
+      setTodayProfit(sales.reduce((s, x) => s + saleNet(x) - saleCost(x), 0))
+    }).catch(() => {})
 
     // Cash balance from accounts
     getAccounts(bId).then(accounts => {
@@ -80,7 +81,7 @@ export default function DashboardPage() {
       color:  'blue' as const,
     },
     {
-      title:  language === 'bn' ? 'আজকের লাভ' : "Today's Profit",
+      title:  language === 'bn' ? 'আজকের মোট লাভ' : "Today's Gross Profit",
       value:  fmt(todayProfit),
       change: '',
       up:     true,
@@ -153,7 +154,7 @@ export default function DashboardPage() {
       {/* Charts row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 mb-5">
         <SalesChart />
-        <CashFlowChart />
+        {canAccess(getRole(activeBusiness, user?.uid), 'reports') && <CashFlowChart />}
       </div>
 
       {/* Bottom row */}

@@ -7,7 +7,9 @@ import { JournalEntryForm } from '@/components/accounting/JournalEntryForm'
 import { AccountSetupModal } from '@/components/accounting/AccountSetupModal'
 import {
   getAccounts, getExpenses, getJournalEntries, deleteExpense,
+  getBusiness, enableAutoPosting, disableAutoPosting, getJournalSkippedCount, userMessage,
 } from '@/lib/firestore'
+import { getRole } from '@/lib/permissions'
 import { useAppStore } from '@/store/useAppStore'
 import {
   BookOpen, Receipt, BarChart2, Plus,
@@ -29,7 +31,8 @@ const accountTypeLabel: Record<string, { bn: string; color: string }> = {
 }
 
 export default function AccountingPage() {
-  const { activeBusiness } = useAppStore()
+  const { activeBusiness, user } = useAppStore()
+  const isOwner = getRole(activeBusiness, user?.uid) === 'owner'
   const [tab,          setTab]          = useState<Tab>('overview')
   const [accounts,     setAccounts]     = useState<Account[]>([])
   const [expenses,     setExpenses]     = useState<Expense[]>([])
@@ -38,6 +41,9 @@ export default function AccountingPage() {
   const [showExpense,  setShowExpense]  = useState(false)
   const [showJournal,  setShowJournal]  = useState(false)
   const [showSetup,    setShowSetup]    = useState(false)
+  const [autoPosting,  setAutoPosting]  = useState(false)
+  const [skipped,      setSkipped]      = useState(0)
+  const [switching,    setSwitching]    = useState(false)
 
   async function load() {
     if (!activeBusiness) return
@@ -52,6 +58,10 @@ export default function AccountingPage() {
       setExpenses(exps)
       setJournals(jnls)
       if (accs.length === 0) setShowSetup(true)
+
+      // অটো-পোস্টিংয়ের অবস্থা (না পেলেও বাকি পাতা চলবে)
+      getBusiness(activeBusiness.id).then(b => setAutoPosting(!!b?.autoPosting)).catch(() => {})
+      getJournalSkippedCount(activeBusiness.id).then(setSkipped).catch(() => {})
     } catch { toast.error('লোড হয়নি') }
     finally  { setLoading(false) }
   }
@@ -65,9 +75,12 @@ export default function AccountingPage() {
     const totalIncome     = accounts.filter(a => a.type === 'income').reduce((s, a) => s + a.balance, 0)
     const totalExpenseAcc = accounts.filter(a => a.type === 'expense').reduce((s, a) => s + a.balance, 0)
     const totalExpenses   = expenses.reduce((s, e) => s + e.amount, 0)
-    const netProfit       = totalIncome - totalExpenseAcc - totalExpenses
+    // অটো-পোস্টিং চালু থাকলে ব্যয় আগেই ব্যয়-অ্যাকাউন্টে বসে — আবার বাদ দিলে দুইবার কাটা যাবে
+    const netProfit       = autoPosting
+      ? totalIncome - totalExpenseAcc
+      : totalIncome - totalExpenseAcc - totalExpenses
     return { totalAssets, totalLiabilities, totalIncome, totalExpenses, netProfit }
-  }, [accounts, expenses])
+  }, [accounts, expenses, autoPosting])
 
   // Expense by category
   const expenseByCategory = useMemo(() => {
@@ -86,11 +99,33 @@ export default function AccountingPage() {
   }, [expenses])
 
   async function handleDeleteExpense(id: string) {
+    if (!user) return
     try {
-      await deleteExpense(id)
+      await deleteExpense(id, user.uid)
       toast.success('ব্যয় মুছে গেছে')
       load()
-    } catch { toast.error('সমস্যা হয়েছে') }
+    } catch (e) { toast.error(userMessage(e, 'সমস্যা হয়েছে')) }
+  }
+
+  async function handleToggleAutoPosting() {
+    if (!activeBusiness) return
+    setSwitching(true)
+    try {
+      if (autoPosting) {
+        await disableAutoPosting(activeBusiness.id)
+        setAutoPosting(false)
+        toast.success('অটো-পোস্টিং বন্ধ হয়েছে')
+      } else {
+        await enableAutoPosting(activeBusiness.id)
+        setAutoPosting(true)
+        toast.success('অটো-পোস্টিং চালু হয়েছে')
+        load()
+      }
+    } catch (e) {
+      toast.error(userMessage(e, 'সমস্যা হয়েছে'))
+    } finally {
+      setSwitching(false)
+    }
   }
 
   const tabs: { key: Tab; label: string; icon: React.ReactNode }[] = [
@@ -123,6 +158,47 @@ export default function AccountingPage() {
           </button>
         </div>
       </div>
+
+      {/* অটো-পোস্টিং অবস্থা */}
+      {!loading && accounts.length > 0 && (
+        autoPosting ? (
+          <div className="card mb-4 flex items-start justify-between gap-3 text-sm">
+            <div className="min-w-0">
+              <p className="font-semibold text-green-600">✓ অটো-পোস্টিং চালু</p>
+              <p className="text-xs text-gray-500 mt-0.5">
+                বিক্রয়, ক্রয়, বাকি আদায় ও ব্যয় নিজে থেকে জার্নাল ও অ্যাকাউন্টে বসছে।
+              </p>
+              {skipped > 0 && (
+                <p className="text-xs text-red-500 mt-1">
+                  {skipped >= 50 ? '৫০+' : skipped}টি লেনদেন জার্নালে বসেনি (অ্যাকাউন্ট পাওয়া যায়নি)। মালিক বন্ধ করে আবার চালু করলে অ্যাকাউন্ট ঠিক হবে; আগের গুলো হাতে জার্নালে তুলুন।
+                </p>
+              )}
+            </div>
+            {isOwner && (
+              <button onClick={handleToggleAutoPosting} disabled={switching}
+                className="text-xs text-gray-400 hover:text-gray-600 shrink-0 underline">
+                {switching ? '...' : 'বন্ধ করো'}
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="card mb-4 text-sm border border-amber-200 dark:border-amber-900">
+            <p className="font-semibold text-amber-600">অটো-পোস্টিং বন্ধ আছে</p>
+            <p className="text-xs text-gray-500 mt-1">
+              চালু করলে এখন থেকে প্রতিটি বিক্রয়, ক্রয়, বাকি আদায় ও ব্যয় নিজে থেকে জার্নাল ও অ্যাকাউন্ট ব্যালেন্সে বসবে।
+              আগের লেনদেন বসবে না — চালু করার পর আগের ব্যালেন্স (নগদ, মজুত পণ্যের মূল্য, বাকি) হাতে জার্নাল দিয়ে তুলে নিন।
+            </p>
+            {isOwner ? (
+              <button onClick={handleToggleAutoPosting} disabled={switching}
+                className="btn-primary px-4 py-2 mt-3 text-sm">
+                {switching ? 'অপেক্ষা করো...' : 'অটো-পোস্টিং চালু করো'}
+              </button>
+            ) : (
+              <p className="text-xs text-gray-400 mt-2">শুধু মালিক এটা চালু করতে পারেন।</p>
+            )}
+          </div>
+        )
+      )}
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-5">
@@ -308,7 +384,12 @@ export default function AccountingPage() {
                     <div key={j.id} className="card">
                       <div className="flex justify-between items-start mb-3">
                         <div>
-                          <p className="font-semibold text-sm">{j.description}</p>
+                          <p className="font-semibold text-sm">
+                            {j.description}
+                            {j.source && j.source !== 'manual' && (
+                              <span className="ml-2 align-middle text-[10px] font-medium px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-500">অটো</span>
+                            )}
+                          </p>
                           {j.reference && <p className="text-xs text-gray-400">REF: {j.reference}</p>}
                         </div>
                         <span className="text-xs text-gray-400 shrink-0 ml-2">

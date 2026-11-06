@@ -8,6 +8,7 @@ import { CustomerLedger } from '@/components/customers/CustomerLedger'
 import { RiskBadge } from '@/components/customers/RiskBadge'
 import { getCustomers, deleteCustomer } from '@/lib/firestore'
 import { useAppStore } from '@/store/useAppStore'
+import { can, getRole } from '@/lib/permissions'
 import {
   Plus, Search, Users, Phone,
   Edit2, Trash2, Loader2, RefreshCw,
@@ -23,7 +24,8 @@ type FilterType = 'all' | 'due' | 'high-risk' | 'clear'
 type SortType   = 'name' | 'due-high' | 'due-low' | 'risk'
 
 export default function CustomersPage() {
-  const { activeBusiness } = useAppStore()
+  const { activeBusiness, user } = useAppStore()
+  const canManage = can(getRole(activeBusiness, user?.uid), 'customer.manage')
   const [customers,   setCustomers]   = useState<Customer[]>([])
   const [loading,     setLoading]     = useState(true)
   const [search,      setSearch]      = useState('')
@@ -258,14 +260,18 @@ export default function CustomersPage() {
                       title="লেজার দেখো">
                       <FileText size={14} />
                     </button>
-                    <button onClick={() => { setEditItem(customer); setShowForm(true) }}
-                      className="p-1.5 rounded-lg bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 text-gray-600 transition-colors">
-                      <Edit2 size={14} />
-                    </button>
-                    <button onClick={() => setConfirmDel(customer)}
-                      className="p-1.5 rounded-lg bg-red-50 dark:bg-red-950 hover:bg-red-100 text-red-500 transition-colors">
-                      <Trash2 size={14} />
-                    </button>
+                    {canManage && (
+                      <>
+                        <button onClick={() => { setEditItem(customer); setShowForm(true) }}
+                          className="p-1.5 rounded-lg bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 text-gray-600 transition-colors">
+                          <Edit2 size={14} />
+                        </button>
+                        <button onClick={() => setConfirmDel(customer)}
+                          className="p-1.5 rounded-lg bg-red-50 dark:bg-red-950 hover:bg-red-100 text-red-500 transition-colors">
+                          <Trash2 size={14} />
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>

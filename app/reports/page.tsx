@@ -1,13 +1,14 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect } from 'react'
 import { MainLayout } from '@/components/layout/MainLayout'
 import { DateRangePicker, type DateRange } from '@/components/reports/DateRangePicker'
 import { SalesReport } from '@/components/reports/SalesReport'
 import { PurchaseReport } from '@/components/reports/PurchaseReport'
 import { InventoryReport } from '@/components/reports/InventoryReport'
 import { ProfitLossReport } from '@/components/reports/ProfitLossReport'
-import { getSales, getPurchases, getProducts, getExpenses } from '@/lib/firestore'
+import { getProducts } from '@/lib/firestore'
+import { getSalesInRange, getPurchasesInRange, getExpensesInRange, getPayrollInRange, getStockLossesInRange } from '@/lib/reports'
 import { useAppStore } from '@/store/useAppStore'
 import {
   BarChart2, ShoppingCart, TruckIcon,
@@ -16,7 +17,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import toast from 'react-hot-toast'
-import type { Sale, Purchase, Product, Expense } from '@/lib/types'
+import type { Sale, Purchase, Product, Expense, PayrollRecord, StockMovement } from '@/lib/types'
 
 type Tab = 'sales' | 'purchase' | 'inventory' | 'profit'
 
@@ -28,6 +29,9 @@ export default function ReportsPage() {
   const [purchases, setPurchases] = useState<Purchase[]>([])
   const [products,  setProducts]  = useState<Product[]>([])
   const [expenses,  setExpenses]  = useState<Expense[]>([])
+  const [payroll,   setPayroll]   = useState<PayrollRecord[]>([])
+  const [stockLoss, setStockLoss] = useState<StockMovement[]>([])
+  const [truncated, setTruncated] = useState(false)
   const [loading,   setLoading]   = useState(true)
 
   const [dateRange, setDateRange] = useState<DateRange>({
@@ -40,31 +44,33 @@ export default function ReportsPage() {
     if (!activeBusiness) return
     setLoading(true)
     try {
-      const [s, p, pr, e] = await Promise.all([
-        getSales(activeBusiness.id, 500),
-        getPurchases(activeBusiness.id, 500),
+      // নির্বাচিত তারিখের সব রেকর্ড (আগের মতো শেষ ৫০০টা না)
+      const { from, to } = dateRange
+      const [s, p, pr, e, pay, loss] = await Promise.all([
+        getSalesInRange(activeBusiness.id, from, to),
+        getPurchasesInRange(activeBusiness.id, from, to),
         getProducts(activeBusiness.id),
-        getExpenses(activeBusiness.id, 500),
+        getExpensesInRange(activeBusiness.id, from, to),
+        getPayrollInRange(activeBusiness.id, from, to).catch(() => ({ items: [] as PayrollRecord[], truncated: false })),
+        getStockLossesInRange(activeBusiness.id, from, to).catch(() => ({ items: [] as StockMovement[], truncated: false })),
       ])
-      setSales(s)
-      setPurchases(p)
+      setSales(s.items)
+      setPurchases(p.items)
       setProducts(pr)
-      setExpenses(e)
+      setExpenses(e.items)
+      setPayroll(pay.items)
+      setStockLoss(loss.items)
+      setTruncated(s.truncated || p.truncated || e.truncated || pay.truncated)
     } catch { toast.error('রিপোর্ট লোড হয়নি') }
     finally  { setLoading(false) }
   }
 
-  useEffect(() => { load() }, [activeBusiness])
+  useEffect(() => { load() }, [activeBusiness, dateRange])
 
-  // Filter by date range
-  function inRange(date: any): boolean {
-    const d = date instanceof Date ? date : new Date(date.seconds * 1000)
-    return d >= dateRange.from && d <= dateRange.to
-  }
-
-  const filteredSales     = useMemo(() => sales.filter(s     => inRange(s.createdAt)),     [sales, dateRange])
-  const filteredPurchases = useMemo(() => purchases.filter(p => inRange(p.createdAt)),     [purchases, dateRange])
-  const filteredExpenses  = useMemo(() => expenses.filter(e  => inRange(e.date ?? e.createdAt)), [expenses, dateRange])
+  // ডেটা এখন সরাসরি নির্বাচিত তারিখের জন্য আনা হয় — আলাদা ছাঁকনি লাগে না
+  const filteredSales     = sales
+  const filteredPurchases = purchases
+  const filteredExpenses  = expenses
 
   const tabs: { key: Tab; label: string; icon: React.ReactNode; color: string }[] = [
     { key: 'sales',     label: 'বিক্রয়',    icon: <ShoppingCart size={15} />, color: 'text-blue-600'   },
@@ -156,6 +162,12 @@ export default function ReportsPage() {
         {tab === 'profit' && <span>{filteredSales.length}টি বিক্রয়, {filteredExpenses.length}টি ব্যয়</span>}
       </div>
 
+      {truncated && (
+        <div className="mb-4 px-3 py-2 rounded-xl bg-amber-50 dark:bg-amber-950 text-amber-700 dark:text-amber-400 text-xs">
+          এই সময়ে রেকর্ড অনেক বেশি, তাই সব দেখানো যায়নি — সংখ্যা অসম্পূর্ণ। তারিখের সীমা ছোট করে দেখুন।
+        </div>
+      )}
+
       {/* Content */}
       {loading ? (
         <div className="flex items-center justify-center py-24">
@@ -169,7 +181,7 @@ export default function ReportsPage() {
           {tab === 'sales'     && <SalesReport     sales={filteredSales} />}
           {tab === 'purchase'  && <PurchaseReport  purchases={filteredPurchases} />}
           {tab === 'inventory' && <InventoryReport products={products} />}
-          {tab === 'profit'    && <ProfitLossReport sales={filteredSales} expenses={filteredExpenses} />}
+          {tab === 'profit'    && <ProfitLossReport sales={filteredSales} expenses={filteredExpenses} payroll={payroll} stockLoss={stockLoss} />}
         </>
       )}
     </MainLayout>

@@ -27,9 +27,22 @@ export interface Business {
   logoUrl?: string
   address?: string
   phone?: string
-  ownerId: string
+  ownerId: string          // যিনি ব্যবসা তৈরি করেছেন (প্রতিষ্ঠাতা মালিক) — তাকে সরানো যায় না
+  ownerIds: string[]       // সব মালিকের uid (members-এর role থেকে আসে)
+  memberIds: string[]      // সব সদস্যের uid — "আমার ব্যবসা" খোঁজার জন্য
+  roles: Record<string, UserRole>  // uid -> ভূমিকা (Firestore rules এটা দেখে অনুমতি দেয়)
   members: BusinessMember[]
   createdAt: Date
+  autoPosting?: boolean                                  // বিক্রয়/ক্রয়/ব্যয় নিজে থেকে জার্নালে বসবে কিনা
+  accountMap?:  Partial<Record<AccountKey, string>>       // সিস্টেম অ্যাকাউন্টের id
+}
+
+// ইমেইল দিয়ে স্টাফ খোঁজার জন্য — লগইনের সময় সেভ হয়
+export interface UserProfile {
+  uid: string
+  email: string | null
+  displayName: string | null
+  phone: string | null
 }
 
 export interface BusinessMember {
@@ -89,6 +102,13 @@ export interface StockMovement {
   reason: string
   date: Date
   createdBy: string
+  previousStock?: number
+  newStock?:      number
+  unitCost?:      number    // পণ্যের ক্রয়মূল্য (তখনকার)
+  lossValue?:     number    // স্টক ক্ষতির মূল্য: ধনাত্মক = ক্ষতি, ঋণাত্মক = সংশোধনে স্টক বাড়ল (লাভ)
+  hasLoss?:       boolean   // lossValue থাকলে true (index ছাড়া খোঁজার জন্য)
+  journalPosted?:  boolean
+  journalSkipped?: boolean
 }
 
 // ===== INVITE =====
@@ -142,6 +162,7 @@ export interface Sale {
   status:        'paid' | 'partial' | 'due'
   createdBy:     string
   createdAt:     Date
+  journalSkipped?: boolean   // অটো-পোস্টিং চালু ছিল কিন্তু অ্যাকাউন্ট না পাওয়ায় বসেনি
 }
 
 // ===== SUPPLIER =====
@@ -189,6 +210,7 @@ export interface Purchase {
   status:        'paid' | 'partial' | 'due'
   createdBy:     string
   createdAt:     Date
+  journalSkipped?: boolean
 }
 
 // ===== CUSTOMER =====
@@ -224,6 +246,17 @@ export interface DuePayment {
 
 // ===== ACCOUNTING =====
 export type AccountType = 'asset' | 'liability' | 'equity' | 'income' | 'expense'
+
+// অটো-পোস্টিং যে সিস্টেম অ্যাকাউন্টগুলো ব্যবহার করে
+export type AccountKey =
+  | 'cash' | 'bank' | 'receivable' | 'inventory'
+  | 'payable' | 'vat_payable'
+  | 'sales' | 'cogs' | 'expense'
+
+// জার্নাল এন্ট্রি কোথা থেকে এসেছে
+export type JournalSource =
+  | 'manual' | 'sale' | 'purchase' | 'due_collection' | 'expense' | 'expense_reversal'
+  | 'payroll' | 'stock_adjustment'
 export type TransactionType = 'debit' | 'credit'
 
 export interface Account {
@@ -234,6 +267,7 @@ export interface Account {
   balance:     number
   isDefault:   boolean
   createdAt:   Date
+  key?:        AccountKey   // সিস্টেম অ্যাকাউন্ট চেনার জন্য
 }
 
 export interface JournalEntry {
@@ -245,6 +279,8 @@ export interface JournalEntry {
   lines:       JournalLine[]
   createdBy:   string
   createdAt:   Date
+  source?:     JournalSource
+  sourceId?:   string
 }
 
 export interface JournalLine {
@@ -265,6 +301,8 @@ export interface Expense {
   reference?:  string
   createdBy:   string
   createdAt:   Date
+  journalPosted?:  boolean
+  journalSkipped?: boolean
 }
 
 // ===== EMPLOYEE =====
@@ -311,6 +349,8 @@ export interface PayrollRecord {
   note?:        string
   createdBy:    string
   createdAt:    Date
+  journalPosted?:  boolean
+  journalSkipped?: boolean
 }
 
 export interface Attendance {

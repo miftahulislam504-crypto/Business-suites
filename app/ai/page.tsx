@@ -8,6 +8,8 @@ import { AIReportAnalysis } from '@/components/ai/AIReportAnalysis'
 import { AIForecast } from '@/components/ai/AIForecast'
 import { buildBusinessContext, buildSystemPrompt } from '@/lib/ai-context'
 import { useAppStore } from '@/store/useAppStore'
+import { askAI } from '@/lib/ai-client'
+import { userMessage } from '@/lib/firestore'
 import {
   Send, Loader2, Sparkles, Trash2,
   Bot, RefreshCw, AlertCircle,
@@ -60,7 +62,7 @@ export default function AIPage() {
 
   async function sendMessage(text?: string) {
     const userText = (text ?? input).trim()
-    if (!userText || loading || !context) return
+    if (!userText || loading || !context || !activeBusiness) return
 
     const userMsg: Message = {
       id:      Date.now().toString(),
@@ -74,25 +76,17 @@ export default function AIPage() {
     setLoading(true)
 
     try {
-      const history = messages.slice(-10).map(m => ({
-        role:    m.role,
-        content: m.content,
-      }))
+      // স্বাগত বার্তা (assistant) বাদ — AI-র কথোপকথন user দিয়ে শুরু হতে হয়
+      const history = messages
+        .filter(m => m.id !== 'welcome')
+        .slice(-10)
+        .map(m => ({ role: m.role, content: m.content }))
 
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model:      'claude-sonnet-4-20250514',
-          max_tokens: 1000,
-          system:     buildSystemPrompt(context),
-          messages:   [...history, { role: 'user', content: userText }],
-        }),
-      })
-
-      if (!response.ok) throw new Error()
-      const data    = await response.json()
-      const aiText  = data.content?.[0]?.text ?? 'উত্তর পাওয়া যায়নি।'
+      const aiText = (await askAI({
+        businessId: activeBusiness.id,
+        system:     buildSystemPrompt(context),
+        messages:   [...history, { role: 'user', content: userText }],
+      })) || 'উত্তর পাওয়া যায়নি।'
 
       setMessages(prev => [...prev, {
         id:      (Date.now() + 1).toString(),
@@ -100,11 +94,11 @@ export default function AIPage() {
         content: aiText,
         time:    new Date(),
       }])
-    } catch {
+    } catch (e) {
       setMessages(prev => [...prev, {
         id:      (Date.now() + 1).toString(),
         role:    'assistant',
-        content: 'দুঃখিত, এই মুহূর্তে সংযোগ হচ্ছে না। ইন্টারনেট চেক করো এবং আবার চেষ্টা করো।',
+        content: userMessage(e, 'দুঃখিত, এই মুহূর্তে সংযোগ হচ্ছে না। ইন্টারনেট চেক করো এবং আবার চেষ্টা করো।'),
         time:    new Date(),
       }])
     } finally {
@@ -137,7 +131,7 @@ export default function AIPage() {
           </div>
           <div>
             <h1 className="font-bold text-xl text-gray-900 dark:text-white">AI Business Assistant</h1>
-            <p className="text-xs text-gray-400">Powered by Claude • তোমার ব্যবসার ডেটা দিয়ে বিশ্লেষণ</p>
+            <p className="text-xs text-gray-400">AI সহকারী • তোমার ব্যবসার ডেটা দিয়ে বিশ্লেষণ</p>
           </div>
         </div>
 

@@ -8,6 +8,8 @@ import {
 } from 'lucide-react'
 import { buildBusinessContext, buildSystemPrompt } from '@/lib/ai-context'
 import { useAppStore } from '@/store/useAppStore'
+import { askAI } from '@/lib/ai-client'
+import { userMessage } from '@/lib/firestore'
 import {
   ResponsiveContainer, AreaChart, Area,
   XAxis, YAxis, CartesianGrid, Tooltip,
@@ -132,18 +134,12 @@ export function AIForecast() {
       const system  = buildSystemPrompt(context)
       const cfg     = forecastConfig[type]
 
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model:      'claude-sonnet-4-20250514',
-          max_tokens: 1500,
-          system,
-          messages: [{ role: 'user', content: cfg.prompt }],
-        }),
+      const raw = await askAI({
+        businessId: activeBusiness.id,
+        system,
+        messages:   [{ role: 'user', content: cfg.prompt }],
+        maxTokens:  1500,
       })
-      const data = await response.json()
-      const raw  = data.content?.[0]?.text ?? ''
 
       // Extract chart data
       let chart: any[] | null = null
@@ -156,10 +152,10 @@ export function AIForecast() {
         [type]: { type, text: cleanText(raw), chart: chart ?? [], time: new Date() },
       }))
       setExpanded(true)
-    } catch {
+    } catch (e) {
       setResults(prev => ({
         ...prev,
-        [type]: { type, text: 'সংযোগ সমস্যা। আবার চেষ্টা করো।', chart: [], time: new Date() },
+        [type]: { type, text: userMessage(e, 'সংযোগ সমস্যা। আবার চেষ্টা করো।'), chart: [], time: new Date() },
       }))
     } finally {
       setLoading(false)

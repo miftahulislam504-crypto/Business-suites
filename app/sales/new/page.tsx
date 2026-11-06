@@ -5,15 +5,18 @@ import { MainLayout } from '@/components/layout/MainLayout'
 import { ProductSearch } from '@/components/sales/ProductSearch'
 import { CartItem } from '@/components/sales/CartItem'
 import { InvoiceModal } from '@/components/sales/InvoiceModal'
-import { getProducts, createSale, generateInvoiceNo, updateStock } from '@/lib/firestore'
+import { RiskBadge } from '@/components/customers/RiskBadge'
+import { getProducts, getCustomers, createSaleWithStock, userMessage } from '@/lib/firestore'
 import { useAppStore } from '@/store/useAppStore'
 import {
   ShoppingCart, User, ChevronDown, ChevronUp,
-  Trash2, Loader2, AlertCircle,
+  Trash2, Loader2, AlertCircle, X,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import toast from 'react-hot-toast'
-import type { Product, SaleItem, Sale, PaymentMethod } from '@/lib/types'
+import type { Product, Customer, SaleItem, Sale, PaymentMethod } from '@/lib/types'
+
+const WALK_IN = 'নগদ বিক্রয়'
 
 const paymentMethods: { value: PaymentMethod; label: string; color: string }[] = [
   { value: 'cash',   label: 'নগদ',          color: 'bg-green-500'  },
@@ -28,7 +31,10 @@ export default function NewSalePage() {
 
   const [products,       setProducts]       = useState<Product[]>([])
   const [cart,           setCart]           = useState<SaleItem[]>([])
-  const [customerName,   setCustomerName]   = useState('নগদ বিক্রয়')
+  const [customers,      setCustomers]      = useState<Customer[]>([])
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
+  const [showCustomerList, setShowCustomerList] = useState(false)
+  const [customerName,   setCustomerName]   = useState(WALK_IN)
   const [customerPhone,  setCustomerPhone]  = useState('')
   const [vatPercent,     setVatPercent]     = useState(0)
   const [paymentMethod,  setPaymentMethod]  = useState<PaymentMethod>('cash')
@@ -41,8 +47,31 @@ export default function NewSalePage() {
   useEffect(() => {
     if (activeBusiness) {
       getProducts(activeBusiness.id).then(setProducts)
+      getCustomers(activeBusiness.id).then(setCustomers)
     }
   }, [activeBusiness])
+
+  // কাস্টমার খোঁজা (নাম বা ফোন)
+  const customerMatches = useMemo(() => {
+    const q = customerName.trim().toLowerCase()
+    if (!q || selectedCustomer || q === WALK_IN.toLowerCase()) return []
+    return customers
+      .filter(c => c.name.toLowerCase().includes(q) || (c.phone ?? '').includes(q))
+      .slice(0, 6)
+  }, [customers, customerName, selectedCustomer])
+
+  function selectCustomer(c: Customer) {
+    setSelectedCustomer(c)
+    setCustomerName(c.name)
+    setCustomerPhone(c.phone ?? '')
+    setShowCustomerList(false)
+  }
+
+  function clearCustomer() {
+    setSelectedCustomer(null)
+    setCustomerName(WALK_IN)
+    setCustomerPhone('')
+  }
 
   // Add product to cart
   function addToCart(product: Product) {
@@ -113,17 +142,29 @@ export default function NewSalePage() {
     if (paidAmount < 0)       { toast.error('পরিশোধের পরিমাণ সঠিক নয়');   return }
     if (!activeBusiness || !user) return
 
+    if (dueAmount > 0 && !selectedCustomer) {
+      toast.error('বাকিতে বিক্রি করতে তালিকা থেকে কাস্টমার বেছে নাও')
+      return
+    }
+    const tooMany = cart.find(i => {
+      const p = products.find(x => x.id === i.productId)
+      return p && i.quantity > p.stock
+    })
+    if (tooMany) {
+      toast.error(`"${tooMany.productName}" স্টকে কম আছে`)
+      return
+    }
+
     setLoading(true)
     try {
-      const invoiceNo = await generateInvoiceNo(activeBusiness.id)
       const status =
         paidAmount >= grandTotal ? 'paid'
         : paidAmount > 0        ? 'partial'
         :                         'due'
 
-      const sale: Omit<Sale, 'id'> = {
+      const sale: Omit<Sale, 'id' | 'createdAt' | 'invoiceNo'> = {
         businessId:    activeBusiness.id,
-        invoiceNo,
+        ...(selectedCustomer ? { customerId: selectedCustomer.id } : {}),
         customerName:  customerName.trim(),
         customerPhone: customerPhone.trim(),
         items:         cart,
@@ -138,32 +179,27 @@ export default function NewSalePage() {
         note:          note.trim(),
         status,
         createdBy:     user.uid,
-        createdAt:     new Date(),
       }
 
-      const saleId = await createSale(sale)
+      // বিক্রয় + স্টক + কাস্টমারের বাকি — একসাথে, নাহলে কিছুই না
+      // ইনভয়েস নম্বর সার্ভার-সাইড transaction-এ সিরিয়াল বসে
+      const { id: saleId, invoiceNo } = await createSaleWithStock(sale, user.uid)
 
-      // Update stock for each item
-      for (const item of cart) {
-        const product = products.find(p => p.id === item.productId)
-        if (product) {
-          const newStock = product.stock - item.quantity
-          await updateStock(
-            item.productId, Math.max(0, newStock),
-            activeBusiness.id, item.productName,
-            'out', item.quantity, `বিক্রয় - ${invoiceNo}`, user.uid,
-          )
-        }
-      }
-
-      // Refresh products for updated stock
-      const updated = await getProducts(activeBusiness.id)
+      // স্টক ও বাকি নতুন করে আনো
+      const [updated, updatedCustomers] = await Promise.all([
+        getProducts(activeBusiness.id),
+        getCustomers(activeBusiness.id),
+      ])
       setProducts(updated)
+      setCustomers(updatedCustomers)
 
-      setCompletedSale({ ...sale, id: saleId })
+      setCompletedSale({ ...sale, id: saleId, invoiceNo, createdAt: new Date() })
       toast.success('বিক্রয় সম্পন্ন হয়েছে!')
     } catch (e) {
-      toast.error('সমস্যা হয়েছে, আবার চেষ্টা করো')
+      console.error(e)
+      toast.error(userMessage(e, 'সমস্যা হয়েছে, আবার চেষ্টা করো'))
+      // স্টক বদলে গিয়ে থাকলে তালিকা নতুন করে আনো
+      getProducts(activeBusiness.id).then(setProducts).catch(() => {})
     } finally {
       setLoading(false)
     }
@@ -172,7 +208,8 @@ export default function NewSalePage() {
   // New sale reset
   function resetSale() {
     setCart([])
-    setCustomerName('নগদ বিক্রয়')
+    setSelectedCustomer(null)
+    setCustomerName(WALK_IN)
     setCustomerPhone('')
     setVatPercent(0)
     setPaymentMethod('cash')
@@ -254,15 +291,55 @@ export default function NewSalePage() {
 
             {/* Customer */}
             <div className="space-y-2 pt-3 border-t border-gray-100 dark:border-gray-800 shrink-0">
-              <div className="flex gap-2">
-                <div className="relative flex-1">
-                  <User size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-                  <input value={customerName} onChange={e => setCustomerName(e.target.value)}
-                    placeholder="কাস্টমারের নাম" className="input-field pl-8 text-sm py-2" />
+              <div className="relative">
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <User size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <input value={customerName}
+                      onChange={e => { setCustomerName(e.target.value); setSelectedCustomer(null); setShowCustomerList(true) }}
+                      onFocus={() => { if (customerName === WALK_IN) setCustomerName(''); setShowCustomerList(true) }}
+                      onBlur={() => setTimeout(() => {
+                        setShowCustomerList(false)
+                        setCustomerName(n => n.trim() ? n : WALK_IN)
+                      }, 200)}
+                      placeholder="কাস্টমার খোঁজো (নাম বা ফোন)" className="input-field pl-8 text-sm py-2" />
+                  </div>
+                  <input value={customerPhone} onChange={e => setCustomerPhone(e.target.value)}
+                    placeholder="ফোন" className="input-field w-32 text-sm py-2" />
                 </div>
-                <input value={customerPhone} onChange={e => setCustomerPhone(e.target.value)}
-                  placeholder="ফোন" className="input-field w-32 text-sm py-2" />
+
+                {showCustomerList && customerMatches.length > 0 && (
+                  <div className="absolute z-20 left-0 right-0 mt-1 max-h-48 overflow-y-auto rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-lg">
+                    {customerMatches.map(c => (
+                      <button key={c.id} type="button"
+                        onMouseDown={e => e.preventDefault()}
+                        onClick={() => selectCustomer(c)}
+                        className="w-full flex items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-gray-50 dark:hover:bg-gray-800">
+                        <span className="truncate">{c.name} <span className="text-xs text-gray-400">{c.phone}</span></span>
+                        {(c.totalDue ?? 0) > 0 && (
+                          <span className="text-xs text-red-500 shrink-0">বাকি ৳{c.totalDue.toLocaleString()}</span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
+
+              {selectedCustomer ? (
+                <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-blue-50 dark:bg-blue-950 text-xs">
+                  <span className="flex items-center gap-2 min-w-0">
+                    <RiskBadge score={selectedCustomer.riskScore ?? 0} />
+                    <span className="truncate">আগের বাকি: ৳{(selectedCustomer.totalDue ?? 0).toLocaleString()}</span>
+                  </span>
+                  <button type="button" onClick={clearCustomer} aria-label="কাস্টমার সরাও" className="p-1 shrink-0">
+                    <X size={14} />
+                  </button>
+                </div>
+              ) : (
+                <p className="text-xs text-gray-400">
+                  তালিকা থেকে কাস্টমার না বাছলে এটা নগদ বিক্রয় — বাকি দেওয়া যাবে না
+                </p>
+              )}
 
               {/* VAT */}
               <div className="flex items-center gap-2">

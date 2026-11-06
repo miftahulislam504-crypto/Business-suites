@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { X, Loader2, Plus, Trash2, BookOpen } from 'lucide-react'
-import { addJournalEntry, getAccounts } from '@/lib/firestore'
+import { addJournalEntry, getAccounts, userMessage } from '@/lib/firestore'
 import { useAppStore } from '@/store/useAppStore'
 import { cn } from '@/lib/utils'
 import toast from 'react-hot-toast'
@@ -51,7 +51,8 @@ export function JournalEntryForm({ onClose, onSaved }: Props) {
 
   const totalDebit  = lines.filter(l => l.type === 'debit').reduce((s, l) => s + l.amount, 0)
   const totalCredit = lines.filter(l => l.type === 'credit').reduce((s, l) => s + l.amount, 0)
-  const isBalanced  = totalDebit === totalCredit && totalDebit > 0
+  // পয়সা পর্যন্ত মিলিয়ে দেখা (০.১+০.২ ≠ ০.৩ ধরনের দশমিক ভুল এড়াতে)
+  const isBalanced  = Math.round(totalDebit * 100) === Math.round(totalCredit * 100) && totalDebit > 0
 
   async function handleSubmit() {
     if (!description.trim()) { toast.error('বিবরণ দাও');              return }
@@ -72,8 +73,8 @@ export function JournalEntryForm({ onClose, onSaved }: Props) {
       })
       toast.success('জার্নাল এন্ট্রি যোগ হয়েছে')
       onSaved()
-    } catch {
-      toast.error('সমস্যা হয়েছে')
+    } catch (e) {
+      toast.error(userMessage(e, 'সমস্যা হয়েছে'))
     } finally {
       setLoading(false)
     }

@@ -4,6 +4,8 @@ import { useState } from 'react'
 import { Sparkles, Loader2, RefreshCw, ChevronDown, ChevronUp } from 'lucide-react'
 import { useAppStore } from '@/store/useAppStore'
 import { buildBusinessContext, buildSystemPrompt } from '@/lib/ai-context'
+import { askAI } from '@/lib/ai-client'
+import { userMessage } from '@/lib/firestore'
 
 interface Props {
   compact?: boolean
@@ -24,25 +26,22 @@ export function AIInsightCard({ compact = false }: Props) {
       const context    = await buildBusinessContext(activeBusiness)
       const systemPmt  = buildSystemPrompt(context)
 
-      const response = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model:      'claude-sonnet-4-20250514',
-          max_tokens: 1000,
-          system:     systemPmt,
-          messages: [{
-            role:    'user',
-            content: 'আমার ব্যবসার এখনকার সবচেয়ে গুরুত্বপূর্ণ ৩টি বিষয় কী? সংক্ষেপে বলো এবং প্রতিটিতে একটি করে পরামর্শ দাও।',
-          }],
-        }),
+      const text = await askAI({
+        businessId: activeBusiness.id,
+        system:     systemPmt,
+        messages: [{
+          role:    'user',
+          content: 'আমার ব্যবসার এখনকার সবচেয়ে গুরুত্বপূর্ণ ৩টি বিষয় কী? সংক্ষেপে বলো এবং প্রতিটিতে একটি করে পরামর্শ দাও।',
+        }],
       })
-      const data = await response.json()
-      setInsight(data.content?.[0]?.text ?? 'উত্তর পাওয়া যায়নি')
+      setInsight(text || 'উত্তর পাওয়া যায়নি')
       setGenerated(true)
       setExpanded(true)
-    } catch {
-      setInsight('AI সংযোগে সমস্যা হয়েছে। পরে আবার চেষ্টা করো।')
+    } catch (e) {
+      // ত্রুটির বার্তাও যেন দেখা যায়
+      setInsight(userMessage(e, 'AI সংযোগে সমস্যা হয়েছে। পরে আবার চেষ্টা করো।'))
+      setGenerated(true)
+      setExpanded(true)
     } finally {
       setLoading(false)
     }

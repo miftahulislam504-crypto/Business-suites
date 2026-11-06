@@ -6,8 +6,7 @@ import { MainLayout } from '@/components/layout/MainLayout'
 import { PurchaseCartItem } from '@/components/purchase/PurchaseCartItem'
 import {
   getProducts, getSuppliers,
-  createPurchase, generatePurchaseNo,
-  updateStock, updateSupplierDue,
+  createPurchaseWithStock, userMessage,
 } from '@/lib/firestore'
 import { useAppStore } from '@/store/useAppStore'
 import {
@@ -119,15 +118,17 @@ export default function NewPurchasePage() {
   async function handleSubmit() {
     if (cart.length === 0) { toast.error('পণ্য যোগ করো'); return }
     if (!activeBusiness || !user) return
+    if (dueAmount > 0 && !selectedSupplier) {
+      toast.error('বাকিতে ক্রয়ে তালিকা থেকে সাপ্লায়ার বেছে নাও')
+      return
+    }
     setLoading(true)
     try {
-      const purchaseNo = await generatePurchaseNo(activeBusiness.id)
       const status = paidAmount >= grandTotal ? 'paid' : paidAmount > 0 ? 'partial' : 'due'
 
       const purchase = {
         businessId:    activeBusiness.id,
-        invoiceNo:     purchaseNo,
-        supplierId:    selectedSupplier?.id,
+        ...(selectedSupplier ? { supplierId: selectedSupplier.id } : {}),
         supplierName:  selectedSupplier?.name ?? 'সরাসরি ক্রয়',
         supplierPhone: selectedSupplier?.phone ?? '',
         items:         cart,
@@ -138,41 +139,18 @@ export default function NewPurchasePage() {
         dueAmount,
         paymentMethod,
         note:          note.trim(),
-        status,
+        status:        status as 'paid' | 'partial' | 'due',
         createdBy:     user.uid,
-        createdAt:     new Date(),
       }
 
-      await createPurchase(purchase as any)
+      // ক্রয় + স্টক + ক্রয়মূল্য + সাপ্লায়ারের বাকি — একসাথে, নাহলে কিছুই না
+      const { invoiceNo } = await createPurchaseWithStock(purchase, user.uid)
 
-      // Update stock for each product
-      for (const item of cart) {
-        const product = products.find(p => p.id === item.productId)
-        if (product) {
-          const newStock = product.stock + item.quantity
-          await updateStock(
-            item.productId, newStock,
-            activeBusiness.id, item.productName,
-            'in', item.quantity, `ক্রয় - ${purchaseNo}`, user.uid,
-          )
-          // Update product purchase price
-          if (item.purchasePrice !== product.purchasePrice) {
-            const { updateProduct } = await import('@/lib/firestore')
-            await updateProduct(item.productId, { purchasePrice: item.purchasePrice })
-          }
-        }
-      }
-
-      // Update supplier due
-      if (selectedSupplier) {
-        await updateSupplierDue(selectedSupplier.id, paidAmount, dueAmount)
-      }
-
-      toast.success(`ক্রয় সম্পন্ন! (${purchaseNo})`)
+      toast.success(`ক্রয় সম্পন্ন! (${invoiceNo})`)
       router.push('/purchase')
     } catch (e) {
       console.error(e)
-      toast.error('সমস্যা হয়েছে')
+      toast.error(userMessage(e, 'সমস্যা হয়েছে'))
     } finally {
       setLoading(false)
     }

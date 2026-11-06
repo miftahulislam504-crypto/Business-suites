@@ -9,9 +9,10 @@ interface Props {
   onEdit: (p: Product) => void
   onDelete: (p: Product) => void
   onStockAdjust: (p: Product) => void
+  canManage?: boolean   // পণ্য সম্পাদনা/মোছা/স্টক সমন্বয়ের অনুমতি (না দিলে true)
 }
 
-export function ProductCard({ product, onEdit, onDelete, onStockAdjust }: Props) {
+export function ProductCard({ product, onEdit, onDelete, onStockAdjust, canManage = true }: Props) {
   const isLow      = product.stock <= product.reorderLevel
   const isOutStock = product.stock === 0
   const profit     = product.salePrice - product.purchasePrice
@@ -95,7 +96,7 @@ export function ProductCard({ product, onEdit, onDelete, onStockAdjust }: Props)
       )}
 
       {/* Actions */}
-      <div className="flex gap-2">
+      {canManage && <div className="flex gap-2">
         <button
           onClick={() => onStockAdjust(product)}
           className="flex-1 py-1.5 text-xs font-medium bg-blue-50 dark:bg-blue-950 text-blue-600 hover:bg-blue-100 dark:hover:bg-blue-900 rounded-lg transition-colors"
@@ -114,7 +115,7 @@ export function ProductCard({ product, onEdit, onDelete, onStockAdjust }: Props)
         >
           <Trash2 size={14} />
         </button>
-      </div>
+      </div>}
     </div>
   )
 }

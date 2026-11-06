@@ -6,7 +6,8 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip,
 } from 'recharts'
 import { useAppStore } from '@/store/useAppStore'
-import { getSales, getExpenses } from '@/lib/firestore'
+import { getSalesInRange, getExpensesInRange, getPayrollInRange } from '@/lib/reports'
+import { saleNet, expenseDate, payrollDate, countsAsExpense, usesPayroll } from '@/lib/finance'
 import { Loader2 } from 'lucide-react'
 
 const MONTHS_BN = ['জান','ফেব','মার্চ','এপ্রি','মে','জুন','জুলাই','আগ','সেপ','অক্টো','নভে','ডিসে']
@@ -31,10 +32,17 @@ export function CashFlowChart() {
   useEffect(() => {
     if (!activeBusiness) { setLoading(false); return }
 
+    // গত ৬ মাসের সব রেকর্ড (আগে শেষ ৫০০টা — ৬ মাসে প্রায় নিশ্চিত কম পড়ত)
+    const t0   = new Date()
+    const from = new Date(t0.getFullYear(), t0.getMonth() - 5, 1)
+    const to   = new Date(t0.getFullYear(), t0.getMonth(), t0.getDate(), 23, 59, 59, 999)
     Promise.all([
-      getSales(activeBusiness.id, 500),
-      getExpenses(activeBusiness.id, 500),
-    ]).then(([sales, expenses]) => {
+      getSalesInRange(activeBusiness.id, from, to),
+      getExpensesInRange(activeBusiness.id, from, to),
+      getPayrollInRange(activeBusiness.id, from, to).catch(() => ({ items: [], truncated: false })),
+    ]).then(([s, e, p]) => {
+      const sales = s.items, expenses = e.items, payroll = p.items
+      const payrollInUse = usesPayroll(payroll)
       // Build last 6 months
       const now = new Date()
       const map: Record<string, { inflow: number; outflow: number; label: string }> = {}
@@ -51,13 +59,20 @@ export function CashFlowChart() {
       sales.forEach(s => {
         const d = (s.createdAt as any)?.toDate ? (s.createdAt as any).toDate() : new Date(s.createdAt)
         const key = `${d.getFullYear()}-${d.getMonth()}`
-        if (map[key]) map[key].inflow += s.grandTotal ?? 0
+        if (map[key]) map[key].inflow += saleNet(s)   // ভ্যাট বাদে
       })
 
       expenses.forEach(e => {
-        const d = (e.createdAt as any)?.toDate ? (e.createdAt as any).toDate() : new Date(e.createdAt)
+        if (!countsAsExpense(e, payrollInUse)) return
+        const d = expenseDate(e)
         const key = `${d.getFullYear()}-${d.getMonth()}`
         if (map[key]) map[key].outflow += e.amount ?? 0
+      })
+
+      payroll.forEach(r => {
+        const d = payrollDate(r)
+        const key = `${d.getFullYear()}-${d.getMonth()}`
+        if (map[key]) map[key].outflow += r.netSalary ?? 0
       })
 
       setData(Object.values(map).map(v => ({

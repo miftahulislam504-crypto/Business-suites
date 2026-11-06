@@ -11,6 +11,7 @@ import {
 import { cn } from '@/lib/utils'
 import { useAppStore } from '@/store/useAppStore'
 import { useTranslation } from '@/hooks/useTranslation'
+import { canAccess, getRole } from '@/lib/permissions'
 
 const navItems = [
   { href: '/dashboard',  icon: LayoutDashboard, key: 'dashboard'  },
@@ -34,7 +35,10 @@ const extraItems = [
 export function Sidebar() {
   const pathname       = usePathname()
   const { tr, language } = useTranslation()
-  const { sidebarOpen, setSidebarOpen, activeBusiness } = useAppStore()
+  const { sidebarOpen, setSidebarOpen, activeBusiness, user } = useAppStore()
+  const role         = getRole(activeBusiness, user?.uid)
+  const visibleNav   = navItems.filter((i) => canAccess(role, i.key))
+  const visibleExtra = extraItems.filter((i) => canAccess(role, i.href.slice(1)))
 
   return (
     <>
@@ -80,7 +84,7 @@ export function Sidebar() {
 
         {/* Nav items */}
         <nav className="flex-1 overflow-y-auto py-3 px-2 space-y-0.5">
-          {navItems.map(({ href, icon: Icon, key }) => {
+          {visibleNav.map(({ href, icon: Icon, key }) => {
             const active = pathname.startsWith(href)
             return (
               <Link
@@ -110,7 +114,7 @@ export function Sidebar() {
           {!sidebarOpen && <div className="my-2 border-t border-gray-100 dark:border-gray-800" />}
 
           {/* Extra items */}
-          {extraItems.map(({ href, icon: Icon, label_bn, label_en, gradient }) => {
+          {visibleExtra.map(({ href, icon: Icon, label_bn, label_en, gradient }) => {
             const active = pathname.startsWith(href)
             return (
               <Link

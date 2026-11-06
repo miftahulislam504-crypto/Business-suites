@@ -1,0 +1,235 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------- সাহায্যকারী ফাংশন ----------
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    // এই ব্যবহারকারী ওই ব্যবসায় কী: 'owner' | 'manager' | 'accountant' | 'salesman' | 'none'
+    // প্রতিষ্ঠাতা (ownerId) সবসময় owner — পুরনো ব্যবসায় roles না থাকলেও কাজ করে
+    function roleIn(bid) {
+      let b = get(/databases/$(database)/documents/businesses/$(bid)).data;
+      return b.ownerId == request.auth.uid ? 'owner'
+        : (('roles' in b) && (request.auth.uid in b.roles)) ? b.roles[request.auth.uid]
+        : 'none';
+    }
+
+    function isMember(bid)   { return signedIn() && roleIn(bid) != 'none'; }
+    function canManage(bid)  { return signedIn() && roleIn(bid) in ['owner', 'manager']; }
+    function canAccount(bid) { return signedIn() && roleIn(bid) in ['owner', 'manager', 'accountant']; }
+
+    function newBiz()  { return request.resource.data.businessId; }
+    function oldBiz()  { return resource.data.businessId; }
+    function sameBiz() { return request.resource.data.businessId == resource.data.businessId; }
+    function createdByMe() { return request.resource.data.createdBy == request.auth.uid; }
+    function onlyChanges(keys) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys);
+    }
+
+    // ব্যবসার মালিক কিনা (প্রতিষ্ঠাতা অথবা roles-এ owner)
+    function isBusinessOwner(b) {
+      return b.ownerId == request.auth.uid
+        || (('roles' in b) && b.roles.get(request.auth.uid, '') == 'owner');
+    }
+
+    // ---------- ব্যবসা ----------
+
+    match /businesses/{businessId} {
+      // নিজের ব্যবসা (প্রতিষ্ঠাতা অথবা সদস্য) ছাড়া পড়া যাবে না
+      allow read: if signedIn() && resource.data.ownerId == request.auth.uid;
+      allow read: if signedIn() && request.auth.uid in resource.data.memberIds;
+
+      allow create: if signedIn()
+        && request.resource.data.ownerId == request.auth.uid
+        && request.auth.uid in request.resource.data.memberIds
+        && request.resource.data.roles[request.auth.uid] == 'owner';
+
+      // যেকোনো মালিক বদলাতে পারবে; প্রতিষ্ঠাতা বদলানো বা প্রতিষ্ঠাতার owner ভূমিকা কাড়া যাবে না
+      allow update: if signedIn()
+        && isBusinessOwner(resource.data)
+        && request.resource.data.ownerId == resource.data.ownerId
+        && (!('roles' in request.resource.data)
+            || request.resource.data.roles[resource.data.ownerId] == 'owner');
+
+      allow delete: if signedIn() && resource.data.ownerId == request.auth.uid;
+    }
+
+    // ---------- ইমেইল -> uid খোঁজা (মালিক/স্টাফ যোগের জন্য) ----------
+    // শুধু পুরো ইমেইল জানলে একটা doc পড়া যায়; তালিকা দেখা যায় না।
+    // নিজের verified ইমেইল ছাড়া অন্যের ইমেইলে নিবন্ধন করা যায় না।
+
+    match /userEmails/{email} {
+      allow get:  if signedIn();
+      allow list: if false;
+      allow create, update: if signedIn()
+        && request.auth.token.email_verified == true
+        && email == request.auth.token.email.lower()
+        && request.resource.data.uid == request.auth.uid;
+      allow delete: if false;
+    }
+
+    // ---------- সিরিয়াল নম্বরের counter ----------
+    // doc id = <businessId>_<sale|purchase>_<বছর>; শুধু ১ করে বাড়ানো যায়, কমানো বা রিসেট করা যায় না
+
+    match /counters/{counterId} {
+      allow read:   if isMember(oldBiz());
+      allow create: if isMember(newBiz())
+        && counterId.matches(newBiz() + '_(sale|purchase)_[0-9]{4}')
+        && request.resource.data.value == 1;
+      allow update: if isMember(oldBiz()) && sameBiz()
+        && request.resource.data.value == resource.data.value + 1;
+      allow delete: if false;
+    }
+
+    // ---------- ক্যাটাগরি / ব্র্যান্ড ----------
+
+    match /categories/{docId} {
+      allow read:   if isMember(oldBiz());
+      allow create: if canManage(newBiz());
+      allow update: if canManage(oldBiz()) && sameBiz();
+      allow delete: if canManage(oldBiz());
+    }
+
+    match /brands/{docId} {
+      allow read:   if isMember(oldBiz());
+      allow create: if canManage(newBiz());
+      allow update: if canManage(oldBiz()) && sameBiz();
+      allow delete: if canManage(oldBiz());
+    }
+
+    // ---------- পণ্য ----------
+    // সদস্যরা (বিক্রয়ের সময়) শুধু stock বদলাতে পারে; হিসাবরক্ষক ক্রয়ে purchasePrice-ও
+
+    match /products/{docId} {
+      allow read:   if isMember(oldBiz());
+      allow create: if canManage(newBiz());
+      allow update: if sameBiz() && (
+        canManage(oldBiz())
+        || (isMember(oldBiz())  && onlyChanges(['stock', 'updatedAt']))
+        || (canAccount(oldBiz()) && onlyChanges(['stock', 'updatedAt', 'purchasePrice']))
+      );
+      allow delete: if canManage(oldBiz());
+    }
+
+    match /stockMovements/{docId} {
+      allow read:   if isMember(oldBiz());
+      allow create: if isMember(newBiz()) && createdByMe();
+      allow update, delete: if false;
+    }
+
+    // ---------- বিক্রয় / কাস্টমার ----------
+
+    match /sales/{docId} {
+      allow read:   if isMember(oldBiz());
+      allow create: if isMember(newBiz()) && createdByMe();
+      allow update: if canManage(oldBiz()) && sameBiz();
+      allow delete: if canManage(oldBiz());
+    }
+
+    // কাস্টমারের বাকির চারটা ফিল্ড বিক্রয়/কালেকশনে বদলায় — সদস্যরা শুধু ওগুলোই বদলাতে পারে
+    match /customers/{docId} {
+      allow read:   if isMember(oldBiz());
+      allow create: if isMember(newBiz());
+      allow update: if sameBiz() && (
+        canManage(oldBiz())
+        || (isMember(oldBiz()) && onlyChanges(['totalDue', 'totalPaid', 'totalPurchase', 'riskScore']))
+      );
+      allow delete: if canManage(oldBiz());
+    }
+
+    match /duePayments/{docId} {
+      allow read:   if isMember(oldBiz());
+      allow create: if isMember(newBiz()) && createdByMe();
+      allow update, delete: if false;
+    }
+
+    // ---------- সাপ্লায়ার / ক্রয় ----------
+
+    match /suppliers/{docId} {
+      allow read:   if isMember(oldBiz());
+      allow create: if canAccount(newBiz());
+      allow update: if canAccount(oldBiz()) && sameBiz();
+      allow delete: if canManage(oldBiz());
+    }
+
+    match /purchases/{docId} {
+      allow read:   if isMember(oldBiz());
+      allow create: if canAccount(newBiz()) && createdByMe();
+      allow update: if canAccount(oldBiz()) && sameBiz();
+      allow delete: if canManage(oldBiz());
+    }
+
+    // ---------- হিসাব ----------
+
+    // অটো-পোস্টিংয়ে বিক্রয়কর্মীর বিক্রিও অ্যাকাউন্ট ব্যালেন্স বদলায় — তাই সদস্যরা শুধু `balance` ফিল্ড বদলাতে পারে
+    match /accounts/{docId} {
+      allow read:   if isMember(oldBiz());
+      allow create: if canAccount(newBiz());
+      allow update: if sameBiz() && (
+        canAccount(oldBiz())
+        || (isMember(oldBiz()) && onlyChanges(['balance']))
+      );
+      allow delete: if canManage(oldBiz());
+    }
+
+    match /journalEntries/{docId} {
+      allow read:   if canAccount(oldBiz());
+      // হাতে জার্নাল: হিসাবরক্ষক+। অটো-পোস্টিং: বিক্রয়/বাকি আদায়ের এন্ট্রি যেকোনো সদস্য
+      allow create: if createdByMe() && (
+        canAccount(newBiz())
+        || (isMember(newBiz()) && request.resource.data.get('source', '') in ['sale', 'due_collection'])
+      );
+      allow update, delete: if false;
+    }
+
+    match /expenses/{docId} {
+      allow read:   if isMember(oldBiz());
+      allow create: if canAccount(newBiz()) && createdByMe();
+      allow update: if canAccount(oldBiz()) && sameBiz();
+      allow delete: if canAccount(oldBiz());
+    }
+
+    // ---------- কর্মচারী / বেতন / হাজিরা (সংবেদনশীল: NID, ব্যাংক, বেতন) ----------
+
+    match /employees/{docId} {
+      allow read:   if canAccount(oldBiz());
+      allow create: if canAccount(newBiz());
+      allow update: if canAccount(oldBiz()) && sameBiz();
+      allow delete: if canManage(oldBiz());
+    }
+
+    match /payroll/{docId} {
+      allow read:   if canAccount(oldBiz());
+      allow create: if canAccount(newBiz()) && createdByMe();
+      allow update: if canAccount(oldBiz()) && sameBiz();
+      allow delete: if canManage(oldBiz());
+    }
+
+    match /attendance/{docId} {
+      allow read:   if canAccount(oldBiz());
+      allow create: if canAccount(newBiz());
+      allow update: if canAccount(oldBiz()) && sameBiz();
+      allow delete: if canManage(oldBiz());
+    }
+
+    // ---------- শাখা / অডিট ----------
+
+    match /branches/{docId} {
+      allow read:   if isMember(oldBiz());
+      allow create: if canManage(newBiz());
+      allow update: if canManage(oldBiz()) && sameBiz();
+      allow delete: if canManage(oldBiz());
+    }
+
+    match /auditLogs/{docId} {
+      allow read:   if canManage(oldBiz());
+      allow create: if isMember(newBiz()) && request.resource.data.userId == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    // বাকি সব কিছু বন্ধ (Firestore-এর ডিফল্ট)
+  }
+}

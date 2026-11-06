@@ -6,7 +6,8 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, Legend,
 } from 'recharts'
 import { useAppStore } from '@/store/useAppStore'
-import { getSales } from '@/lib/firestore'
+import { getSalesInRange } from '@/lib/reports'
+import { saleNet, saleCost } from '@/lib/finance'
 import { Loader2 } from 'lucide-react'
 
 const DAYS_BN = ['রবি', 'সোম', 'মঙ্গল', 'বুধ', 'বৃহ', 'শুক্র', 'শনি']
@@ -34,7 +35,10 @@ export function SalesChart() {
   useEffect(() => {
     if (!activeBusiness) { setLoading(false); return }
 
-    getSales(activeBusiness.id, 200).then(sales => {
+    // গত ৭ দিনের সব বিক্রয় (আগে শেষ ২০০টা — ব্যস্ত সপ্তাহে কম পড়ত)
+    const from = new Date(); from.setDate(from.getDate() - 6); from.setHours(0, 0, 0, 0)
+    const to   = new Date(); to.setHours(23, 59, 59, 999)
+    getSalesInRange(activeBusiness.id, from, to).then(({ items: sales }) => {
       // Build last 7 days map
       const map: Record<string, { sales: number; profit: number }> = {}
       for (let i = 6; i >= 0; i--) {
@@ -49,8 +53,7 @@ export function SalesChart() {
         const key = d.toDateString()
         if (map[key] !== undefined) {
           map[key].sales  += s.grandTotal ?? 0
-          const cost = s.items?.reduce((a: number, i: any) => a + (i.purchasePrice ?? 0) * (i.qty ?? 0), 0) ?? 0
-          map[key].profit += (s.grandTotal ?? 0) - cost
+          map[key].profit += saleNet(s) - saleCost(s)
         }
       })
 

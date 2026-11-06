@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { X, Loader2, Receipt } from 'lucide-react'
-import { addExpense } from '@/lib/firestore'
+import { addExpense, userMessage } from '@/lib/firestore'
 import { useAppStore } from '@/store/useAppStore'
 import { cn } from '@/lib/utils'
 import toast from 'react-hot-toast'
@@ -63,8 +63,8 @@ export function ExpenseForm({ onClose, onSaved }: Props) {
       })
       toast.success('ব্যয় যোগ হয়েছে')
       onSaved()
-    } catch {
-      toast.error('সমস্যা হয়েছে')
+    } catch (e) {
+      toast.error(userMessage(e, 'সমস্যা হয়েছে'))
     } finally {
       setLoading(false)
     }

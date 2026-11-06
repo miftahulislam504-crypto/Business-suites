@@ -7,11 +7,14 @@ import {
 } from 'recharts'
 import { TrendingUp, TrendingDown, Scale, ArrowUpRight, ArrowDownRight } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import type { Sale, Expense } from '@/lib/types'
+import { summarizeProfit, monthlyProfit, expenseCategories } from '@/lib/finance'
+import type { Sale, Expense, PayrollRecord, StockMovement } from '@/lib/types'
 
 interface Props {
   sales:    Sale[]
   expenses: Expense[]
+  payroll:  PayrollRecord[]
+  stockLoss: StockMovement[]
 }
 
 const CustomTooltip = ({ active, payload, label }: any) => {
@@ -28,57 +31,32 @@ const CustomTooltip = ({ active, payload, label }: any) => {
   )
 }
 
-export function ProfitLossReport({ sales, expenses }: Props) {
+export function ProfitLossReport({ sales, expenses, payroll, stockLoss }: Props) {
 
-  const totalRevenue  = useMemo(() => sales.reduce((s, x) => s + x.grandTotal, 0), [sales])
-  const totalCOGS     = useMemo(() => sales.reduce((s, x) =>
-    s + x.items.reduce((si, i) => si + i.purchasePrice * i.quantity, 0), 0), [sales])
-  const grossProfit   = totalRevenue - totalCOGS
-  const totalExpenses = useMemo(() => expenses.reduce((s, e) => s + e.amount, 0), [expenses])
-  const netProfit     = grossProfit - totalExpenses
+  // সব হিসাব lib/finance.ts থেকে — dashboard ও AI-র সাথে সংখ্যা মিলবে
+  const sum              = useMemo(() => summarizeProfit({ sales, expenses, payroll, stockLoss }), [sales, expenses, payroll, stockLoss])
+  const monthlyData      = useMemo(() => monthlyProfit({ sales, expenses, payroll, stockLoss }), [sales, expenses, payroll, stockLoss])
+  const expenseBreakdown = useMemo(() => expenseCategories({ expenses, payroll }), [expenses, payroll])
+
+  const totalRevenue  = sum.revenue
+  const grossProfit   = sum.grossProfit
+  const totalExpenses = sum.opex
+  const netProfit     = sum.netProfit
   const grossMargin   = totalRevenue > 0 ? (grossProfit / totalRevenue * 100).toFixed(1) : '0'
   const netMargin     = totalRevenue > 0 ? (netProfit   / totalRevenue * 100).toFixed(1) : '0'
 
-  // Monthly P&L
-  const monthlyData = useMemo(() => {
-    const map: Record<string, { revenue: number; cogs: number; expenses: number }> = {}
-
-    sales.forEach(s => {
-      const d   = s.createdAt instanceof Date ? s.createdAt : new Date((s.createdAt as any).seconds * 1000)
-      const key = `${d.getMonth()+1}/${d.getFullYear().toString().slice(-2)}`
-      if (!map[key]) map[key] = { revenue: 0, cogs: 0, expenses: 0 }
-      map[key].revenue += s.grandTotal
-      map[key].cogs    += s.items.reduce((si, i) => si + i.purchasePrice * i.quantity, 0)
-    })
-
-    expenses.forEach(e => {
-      const d   = e.date instanceof Date ? e.date : new Date((e.date as any).seconds * 1000)
-      const key = `${d.getMonth()+1}/${d.getFullYear().toString().slice(-2)}`
-      if (!map[key]) map[key] = { revenue: 0, cogs: 0, expenses: 0 }
-      map[key].expenses += e.amount
-    })
-
-    return Object.entries(map).slice(-6).map(([month, v]) => ({
-      month,
-      revenue:    v.revenue,
-      grossProfit: v.revenue - v.cogs,
-      netProfit:  v.revenue - v.cogs - v.expenses,
-    }))
-  }, [sales, expenses])
-
-  // Expense breakdown
-  const expenseBreakdown = useMemo(() => {
-    const map: Record<string, number> = {}
-    expenses.forEach(e => { map[e.category] = (map[e.category] ?? 0) + e.amount })
-    return Object.entries(map).sort((a, b) => b[1] - a[1])
-  }, [expenses])
-
   const rows = [
-    { label: 'মোট রাজস্ব (Revenue)',     value: totalRevenue,  indent: false, bold: true,  color: 'text-blue-600'    },
-    { label: 'বিক্রয়কৃত পণ্যের ব্যয় (COGS)', value: -totalCOGS, indent: true,  bold: false, color: 'text-red-500'     },
-    { label: 'মোট লাভ (Gross Profit)',   value: grossProfit,   indent: false, bold: true,  color: grossProfit >= 0 ? 'text-green-600' : 'text-red-600' },
-    { label: 'পরিচালন ব্যয় (OpEx)',      value: -totalExpenses,indent: true,  bold: false, color: 'text-orange-600'  },
-    { label: 'নিট মুনাফা (Net Profit)',  value: netProfit,     indent: false, bold: true,  color: netProfit >= 0 ? 'text-emerald-600' : 'text-red-600' },
+    { label: 'মোট রাজস্ব (ভ্যাট বাদে)',        value: totalRevenue,   indent: false, bold: true,  color: 'text-blue-600'    },
+    { label: 'বিক্রীত পণ্যের ব্যয় (COGS)',      value: -sum.cogs,      indent: true,  bold: false, color: 'text-red-500'     },
+    ...(sum.stockLoss !== 0
+      ? [{ label: sum.stockLoss > 0 ? 'স্টক ক্ষতি ও সংশোধন' : 'স্টক সংশোধনে লাভ', value: -sum.stockLoss, indent: true, bold: false, color: 'text-red-500' }]
+      : []),
+    { label: 'মোট লাভ (Gross Profit)',          value: grossProfit,    indent: false, bold: true,  color: grossProfit >= 0 ? 'text-green-600' : 'text-red-600' },
+    ...(sum.salary > 0
+      ? [{ label: sum.salarySource === 'payroll' ? 'বেতন (পে-রোল)' : 'বেতন ও মজুরি', value: -sum.salary, indent: true, bold: false, color: 'text-orange-600' }]
+      : []),
+    { label: 'অন্যান্য পরিচালন ব্যয়',           value: -sum.otherExpenses, indent: true, bold: false, color: 'text-orange-600' },
+    { label: 'নিট মুনাফা (Net Profit)',         value: netProfit,      indent: false, bold: true,  color: netProfit >= 0 ? 'text-emerald-600' : 'text-red-600' },
   ]
 
   return (
@@ -153,6 +131,17 @@ export function ProfitLossReport({ sales, expenses }: Props) {
             {netProfit >= 0 ? `নিট মুনাফা — মার্জিন ${netMargin}%` : `নিট ক্ষতি — ${netMargin}%`}
           </p>
         </div>
+
+        {(sum.vat > 0 || sum.ignoredSalaryExpenses > 0) && (
+          <div className="mt-3 space-y-1 text-xs text-gray-400">
+            {sum.vat > 0 && (
+              <p>ভ্যাট ৳{sum.vat.toLocaleString()} সংগৃহীত — এটা আয় নয়, সরকারের দেনা; তাই রাজস্ব থেকে বাদ।</p>
+            )}
+            {sum.ignoredSalaryExpenses > 0 && (
+              <p>'বেতন ও মজুরি' ক্যাটাগরির ৳{sum.ignoredSalaryExpenses.toLocaleString()} ব্যয় বাদ — বেতন পে-রোল থেকে নেওয়ায় দুইবার গোনা হয়নি।</p>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Monthly trend */}

@@ -7,6 +7,7 @@ import { PayrollModal } from '@/components/employees/PayrollModal'
 import { AttendanceModal } from '@/components/employees/AttendanceModal'
 import { getEmployees, getPayrollRecords, deleteEmployee } from '@/lib/firestore'
 import { useAppStore } from '@/store/useAppStore'
+import { can, getRole } from '@/lib/permissions'
 import {
   Plus, Search, UserCog, Phone,
   Edit2, Trash2, Loader2, RefreshCw,
@@ -31,7 +32,8 @@ const statusLabel: Record<string, string> = {
 const monthNames = ['জানু','ফেব','মার্চ','এপ্রি','মে','জুন','জুলা','আগ','সেপ','অক্টো','নভে','ডিসে']
 
 export default function EmployeesPage() {
-  const { activeBusiness } = useAppStore()
+  const { activeBusiness, user } = useAppStore()
+  const canDelete = can(getRole(activeBusiness, user?.uid), 'employee.delete')
   const [tab,             setTab]            = useState<Tab>('employees')
   const [employees,       setEmployees]       = useState<Employee[]>([])
   const [payrollRecords,  setPayrollRecords]  = useState<PayrollRecord[]>([])
@@ -217,7 +219,7 @@ export default function EmployeesPage() {
                         className="p-1.5 rounded-lg bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 text-gray-600">
                         <Edit2 size={14} />
                       </button>
-                      {emp.status === 'active' && (
+                      {canDelete && emp.status === 'active' && (
                         <button onClick={() => setConfirmDel(emp)}
                           className="p-1.5 rounded-lg bg-red-50 dark:bg-red-950 hover:bg-red-100 text-red-500">
                           <Trash2 size={14} />

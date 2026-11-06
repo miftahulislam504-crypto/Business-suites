@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { X, Loader2, ArrowUp, ArrowDown, RefreshCw } from 'lucide-react'
-import { updateStock } from '@/lib/firestore'
+import { adjustStock, stockLossValue, userMessage } from '@/lib/firestore'
 import { useAppStore } from '@/store/useAppStore'
 import { cn } from '@/lib/utils'
 import toast from 'react-hot-toast'
@@ -41,6 +41,9 @@ export function StockAdjustModal({ product, onClose, onUpdated }: Props) {
     ? product.stock - qty
     : qty  // adjustment = set to exact value
 
+  // ক্ষতি/সংশোধন হলে হিসাবে কত ধরা হবে (ক্রয়মূল্য × কমা/বাড়া পরিমাণ)
+  const lossPreview = stockLossValue(type, reason, product.stock, newStock, product.purchasePrice ?? 0)
+
   async function handleSubmit() {
     if (qty <= 0) { toast.error('পরিমাণ দাও'); return }
     if (type === 'out' && product.stock - qty < 0) {
@@ -50,15 +53,17 @@ export function StockAdjustModal({ product, onClose, onUpdated }: Props) {
     if (!activeBusiness || !user) return
     setLoading(true)
     try {
-      await updateStock(
-        product.id, newStock,
-        activeBusiness.id, product.name,
-        type, qty, reason, user.uid,
-      )
+      // স্টক এখন সার্ভারের বর্তমান সংখ্যা থেকে হিসাব হয় (নতুন সংখ্যা পাঠানো হয় না)
+      await adjustStock({
+        businessId: activeBusiness.id,
+        productId:  product.id,
+        type, quantity: qty, reason,
+        userId: user.uid,
+      })
       toast.success('স্টক আপডেট হয়েছে')
       onUpdated()
-    } catch {
-      toast.error('সমস্যা হয়েছে')
+    } catch (e) {
+      toast.error(userMessage(e, 'সমস্যা হয়েছে'))
     } finally {
       setLoading(false)
     }
@@ -136,6 +141,15 @@ export function StockAdjustModal({ product, onClose, onUpdated }: Props) {
               ))}
             </div>
           </div>
+
+          {/* হিসাবে কী পড়বে */}
+          <p className="text-xs text-gray-500">
+            {lossPreview > 0
+              ? `এটা ক্ষতি হিসেবে ৳${lossPreview.toLocaleString()} ধরা হবে (ক্রয়মূল্য ৳${product.purchasePrice ?? 0} × ${product.stock - newStock}টি)।`
+              : lossPreview < 0
+              ? `এটা সংশোধনে ৳${Math.abs(lossPreview).toLocaleString()} লাভ হিসেবে ধরা হবে।`
+              : 'এতে শুধু স্টক বদলাবে, লাভ-ক্ষতিতে কিছু ধরা হবে না। ক্রয় বা বিক্রয় হলে ক্রয়/বিক্রয় পাতা ব্যবহার করুন — তাহলে হিসাবও আপডেট হয়।'}
+          </p>
 
           {/* New stock preview */}
           <div className={cn(

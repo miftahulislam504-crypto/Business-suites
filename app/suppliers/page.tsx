@@ -5,6 +5,7 @@ import { MainLayout } from '@/components/layout/MainLayout'
 import { SupplierForm } from '@/components/suppliers/SupplierForm'
 import { getSuppliers, deleteSupplier } from '@/lib/firestore'
 import { useAppStore } from '@/store/useAppStore'
+import { can, getRole } from '@/lib/permissions'
 import {
   Plus, Search, Building2, Phone,
   Edit2, Trash2, Loader2, RefreshCw,
@@ -15,7 +16,8 @@ import toast from 'react-hot-toast'
 import type { Supplier } from '@/lib/types'
 
 export default function SuppliersPage() {
-  const { activeBusiness } = useAppStore()
+  const { activeBusiness, user } = useAppStore()
+  const canDelete = can(getRole(activeBusiness, user?.uid), 'supplier.delete')
   const [suppliers,  setSuppliers]  = useState<Supplier[]>([])
   const [loading,    setLoading]    = useState(true)
   const [search,     setSearch]     = useState('')
@@ -156,10 +158,12 @@ export default function SuppliersPage() {
                   className="p-1.5 rounded-lg bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-600">
                   <Edit2 size={14} />
                 </button>
-                <button onClick={() => setConfirmDel(supplier)}
-                  className="p-1.5 rounded-lg bg-red-50 dark:bg-red-950 hover:bg-red-100 text-red-500">
-                  <Trash2 size={14} />
-                </button>
+                {canDelete && (
+                  <button onClick={() => setConfirmDel(supplier)}
+                    className="p-1.5 rounded-lg bg-red-50 dark:bg-red-950 hover:bg-red-100 text-red-500">
+                    <Trash2 size={14} />
+                  </button>
+                )}
               </div>
             </div>
           ))}

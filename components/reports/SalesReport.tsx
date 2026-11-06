@@ -7,6 +7,7 @@ import {
   ResponsiveContainer, PieChart, Pie, Cell, Legend,
 } from 'recharts'
 import { TrendingUp, ShoppingCart, Users, Package } from 'lucide-react'
+import { saleNet, saleCost } from '@/lib/finance'
 import type { Sale } from '@/lib/types'
 
 interface Props { sales: Sale[] }
@@ -30,7 +31,7 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 export function SalesReport({ sales }: Props) {
   const stats = useMemo(() => {
     const total   = sales.reduce((s, x) => s + x.grandTotal, 0)
-    const profit  = sales.reduce((s, x) => s + x.items.reduce((si, i) => si + (i.salePrice - i.purchasePrice) * i.quantity, 0), 0)
+    const profit  = sales.reduce((s, x) => s + saleNet(x) - saleCost(x), 0)   // ডিসকাউন্ট ও ভ্যাট ধরে
     const due     = sales.reduce((s, x) => s + x.dueAmount, 0)
     const avgOrder= sales.length > 0 ? total / sales.length : 0
     return { total, profit, due, avgOrder, count: sales.length }
@@ -46,7 +47,7 @@ export function SalesReport({ sales }: Props) {
       const key = `${d.getDate()}/${d.getMonth()+1}`
       if (!map[key]) map[key] = { sales: 0, profit: 0 }
       map[key].sales  += s.grandTotal
-      map[key].profit += s.items.reduce((si, i) => si + (i.salePrice - i.purchasePrice) * i.quantity, 0)
+      map[key].profit += saleNet(s) - saleCost(s)
     })
     return Object.entries(map).slice(-14).map(([day, v]) => ({ day, ...v }))
   }, [sales])
